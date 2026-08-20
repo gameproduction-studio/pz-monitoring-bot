@@ -1,0 +1,6 @@
+{
+  "schema": "pz-monitoring-bot/current-state/v1",
+  "schemaVersion": "1.0.0",
+  "ready": false,
+  "message": "Awaiting first successful in-game export."
+}

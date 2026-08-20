@@ -1,0 +1,3 @@
+name=pz monitoring bot
+id=PZMonitoringBot
+description=Exports inventory and known world-container state for external analysis.

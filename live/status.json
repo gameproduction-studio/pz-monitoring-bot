@@ -1,0 +1,8 @@
+{
+  "schema": "pz-monitoring-bot/status/v2",
+  "schemaVersion": "1.0.0",
+  "ok": false,
+  "parsingSuccessful": false,
+  "ready": false,
+  "error": "No real game telemetry has been relayed yet."
+}

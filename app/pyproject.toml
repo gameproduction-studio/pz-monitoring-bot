@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pz-monitoring-bot"
+version = "0.2.0"
+description = "Read-only Project Zomboid resource monitor with live JSON publishing for ChatGPT"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "GameProduction Studio" }]
+dependencies = []
+
+[project.optional-dependencies]
+tray = ["pystray>=0.19.5", "Pillow>=10.4"]
+dev = ["pytest>=8.3"]
+
+[project.scripts]
+pzbot = "pzbot.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]
+

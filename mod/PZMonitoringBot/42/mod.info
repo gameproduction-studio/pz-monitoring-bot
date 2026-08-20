@@ -1,0 +1,4 @@
+name=pz monitoring bot
+id=PZMonitoringBot
+description=Read-only gameplay telemetry exporter for Project Zomboid Build 42.
+versionMin=42.20

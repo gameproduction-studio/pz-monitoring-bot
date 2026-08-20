@@ -1,0 +1,21 @@
+{
+  "save_root": "%USERPROFILE%/Zomboid/Saves",
+  "game_path": "D:/SteamLibrary/steamapps/common/ProjectZomboid",
+  "telemetry_dir": "%USERPROFILE%/Zomboid/Lua",
+  "runtime_dir": "runtime",
+  "live_dir": "../live",
+  "poll_seconds": 5,
+  "stable_polls": 3,
+  "stable_interval_seconds": 2,
+  "base_zones": [],
+  "explicitly_opened_container_ids": [],
+  "manual_owned_container_ids": [],
+  "publish": {
+    "enabled": false,
+    "repository_path": "..",
+    "branch": "main",
+    "remote": "origin",
+    "minimum_interval_seconds": 5
+  }
+}
+
