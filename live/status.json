@@ -3,8 +3,8 @@
   "schemaVersion": "1.0.0",
   "ok": true,
   "parsingSuccessful": true,
-  "lastScanAt": "2026-08-21T17:35:05+00:00",
-  "lastGameExportEpochMs": 1787333684688,
+  "lastScanAt": "2026-08-21T18:04:40+00:00",
+  "lastGameExportEpochMs": 1787335475858,
   "activeSave": {
     "gameMode": "Sandbox",
     "id": "Sandbox:2026-08-21_16-42-36",
@@ -12,12 +12,14 @@
   },
   "game": {
     "build": "42.20",
-    "worldAgeHours": 40.166893005371094
+    "worldAgeHours": 40.26060485839844
   },
   "coverage": {
     "baseLoadedSquaresScanned": true,
     "configuredBaseCount": 1,
     "openedContainersRememberedThisSession": true,
+    "registeredVehiclesConfigured": 0,
+    "registeredVehiclesLoaded": 0,
     "runtimeLoadedOnly": true,
     "unloadedRemoteContainersComplete": false
   },
@@ -29,11 +31,12 @@
   "modStatus": {
     "counts": {
       "containers": 55,
-      "itemInstances": 1214
+      "itemInstances": 1214,
+      "vehicles": 0
     },
     "game": {
       "build": "42.20",
-      "worldAgeHours": 40.166893005371094
+      "worldAgeHours": 40.26060485839844
     },
     "ok": true,
     "parsingSuccessful": true,
@@ -45,8 +48,8 @@
       "name": "2026-08-21_16-42-36"
     },
     "schema": "pz-monitoring-bot/mod-status/v1",
-    "schemaVersion": "0.3.0",
-    "sequence": 3,
-    "writtenAtEpochMs": 1787333685256
+    "schemaVersion": "0.4.0",
+    "sequence": 2,
+    "writtenAtEpochMs": 1787335476437
   }
 }
