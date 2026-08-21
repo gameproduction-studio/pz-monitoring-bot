@@ -14,20 +14,22 @@ Zomboid. Персонаж и мир существуют в игре, а акт�
 ИСТОЧНИКИ ДАННЫХ
 
 1. Состояние синхронизации:
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/status.json
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/status.json
 
 2. Полный актуальный снимок:
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/current_state.json
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/current_state.json
 
 3. Журнал изменений:
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/changes.jsonl
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/changes.jsonl
 
 ПРОТОКОЛ КАЖДОГО МОЕГО СООБЩЕНИЯ ОБ ИГРЕ
 
-Перед каждым ответом заново открой status.json, затем current_state.json. Если
-я спрашиваю, что изменилось, дополнительно прочитай последние строки
-changes.jsonl. Не полагайся на ранее прочитанный снимок и не восстанавливай
-предметы по памяти чата.
+Перед каждым ответом заново открой status.json, затем current_state.json через
+подключённый источник GitHub по точным путям репозитория выше. Если я спрашиваю,
+что изменилось, дополнительно прочитай последние строки changes.jsonl. Не
+добавляй к ссылкам ?nocache или другие query-параметры. При единичной ошибке
+загрузки повтори чтение точного GitHub-пути один раз. Не полагайся на ранее
+прочитанный снимок и не восстанавливай предметы по памяти чата.
 
 Сначала проверь в status.json:
 - ok == true;

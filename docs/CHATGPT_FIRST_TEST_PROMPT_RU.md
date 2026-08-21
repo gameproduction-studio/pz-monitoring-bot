@@ -12,14 +12,17 @@ pz monitoring bot.
 
 ИСТОЧНИКИ
 
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/status.json
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/current_state.json
-https://raw.githubusercontent.com/gameproduction-studio/pz-monitoring-bot/main/live/changes.jsonl
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/status.json
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/current_state.json
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/changes.jsonl
 
-Перед каждым ответом об игре заново открывай status.json и current_state.json.
-Если вопрос касается изменений, дополнительно перечитывай конец changes.jsonl.
-Для защиты от кэша можешь добавлять к raw-ссылкам параметр
-?nocache=<текущая дата и время UTC>.
+Перед каждым ответом об игре заново открывай status.json и current_state.json
+через подключённый источник GitHub по указанным точным путям репозитория. Если
+вопрос касается изменений, дополнительно перечитывай конец changes.jsonl.
+Не добавляй к ссылкам ?nocache и другие query-параметры: GitHub-коннектор может
+отклонить изменённый URL. При единичной ошибке загрузки повтори чтение точного
+пути через GitHub один раз; только после повторной ошибки считай файл
+недоступным.
 
 Сначала проверь status.ok, parsingSuccessful, activeSave.id, lastScanAt,
 lastGameExportEpochMs, publication, modStatus.sequence, modStatus.reason и
