@@ -11,7 +11,7 @@
   "explicitly_opened_container_ids": [],
   "manual_owned_container_ids": [],
   "publish": {
-    "enabled": false,
+    "enabled": true,
     "repository_path": "..",
     "branch": "main",
     "remote": "origin",
