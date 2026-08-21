@@ -1,9 +1,9 @@
 {
   "schema": "pz-monitoring-bot/status/v2",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "ok": true,
   "parsingSuccessful": true,
-  "lastScanAt": "2026-08-21T16:49:19+00:00",
+  "lastScanAt": "2026-08-21T17:30:03+00:00",
   "lastGameExportEpochMs": 1787330938446,
   "activeSave": {
     "gameMode": "Sandbox",
@@ -19,7 +19,13 @@
     "configuredBaseCount": 1,
     "openedContainersRememberedThisSession": true,
     "runtimeLoadedOnly": true,
-    "unloadedRemoteContainersComplete": false
+    "unloadedRemoteContainersComplete": false,
+    "vehicles": {
+      "registered": 0,
+      "loadedThisSnapshot": 0,
+      "lastKnownStale": 0,
+      "unloadedVehiclesCarriedForward": true
+    }
   },
   "changesThisScan": 0,
   "itemInstances": 1228,
