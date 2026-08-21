@@ -5,9 +5,11 @@ PZMB.Scanner = PZMB.Scanner or {}
 
 local Scanner = PZMB.Scanner
 Scanner.knownContainers = Scanner.knownContainers or {}
+Scanner.containerRefs = Scanner.containerRefs or {}
 Scanner.openedContainerIds = Scanner.openedContainerIds or {}
-Scanner.baseZone = Scanner.baseZone or nil
+Scanner.baseZones = Scanner.baseZones or {}
 Scanner.lastSelectedContainerId = Scanner.lastSelectedContainerId or nil
+Scanner.baseIndexesBuilt = Scanner.baseIndexesBuilt or {}
 
 local function safeCall(object, methodName, defaultValue, ...)
     if not object then return defaultValue end
@@ -307,13 +309,16 @@ local function containerKind(container)
     return "stationary"
 end
 
-local function isInsideBase(position)
-    local base = Scanner.baseZone
-    if not base or not position then return false end
-    if position.z < base.minZ or position.z > base.maxZ then return false end
-    local dx = position.x - base.x
-    local dy = position.y - base.y
-    return dx * dx + dy * dy <= base.radius * base.radius
+local function containingBase(position)
+    if not position then return nil end
+    for _, base in ipairs(Scanner.baseZones) do
+        if position.z >= base.minZ and position.z <= base.maxZ then
+            local dx = position.x - base.x
+            local dy = position.y - base.y
+            if dx * dx + dy * dy <= base.radius * base.radius then return base end
+        end
+    end
+    return nil
 end
 
 function Scanner.containerSnapshot(container, observation)
@@ -322,15 +327,22 @@ function Scanner.containerSnapshot(container, observation)
     local position = squarePosition(container)
     local typeName = tostring(safeCall(container, "getType", "unknown"))
     local localizedType = getTextOrNull("IGUI_ContainerTitle_" .. typeName) or typeName
-    local customName = safeCall(container, "getCustomName", nil)
+    local customName = nil
+    local parent = safeCall(container, "getParent", nil)
+    -- Build 42.20.3 throws a Java NPE when getCustomName() is called on
+    -- transient UI ItemContainers whose parent is nil. Do not call it at all.
+    if parent then customName = safeCall(container, "getCustomName", nil) end
     local ownedByOpened = Scanner.openedContainerIds[id] == true
-    local ownedByBase = isInsideBase(position)
+    local owningBase = containingBase(position)
+    local ownedByBase = owningBase ~= nil
     local storage = {
         containerId = id,
         containerName = customName or localizedType,
         kind = containerKind(container),
         refrigerator = safeCall(container, "isFridge", false),
         freezer = safeCall(container, "isFreezer", false),
+        baseZoneId = owningBase and owningBase.id or nil,
+        baseZoneName = owningBase and owningBase.name or nil,
     }
     local player = getPlayer()
     local equipment = player and equipmentMap(player) or {}
@@ -350,6 +362,8 @@ function Scanner.containerSnapshot(container, observation)
         ownership = {
             owned = ownedByOpened or ownedByBase,
             reason = ownedByBase and "inside_base" or (ownedByOpened and "opened_by_player" or "observed_only"),
+            baseZoneId = owningBase and owningBase.id or nil,
+            baseZoneName = owningBase and owningBase.name or nil,
         },
         observation = observation or "nearby",
         lastSeenWorldAgeHours = getGameTime():getWorldAgeHours(),
@@ -365,6 +379,7 @@ function Scanner.observeContainer(container, observation, opened)
     if opened then Scanner.openedContainerIds[id] = true end
     local snapshot = Scanner.containerSnapshot(container, observation)
     Scanner.knownContainers[id] = snapshot
+    Scanner.containerRefs[id] = container
     return snapshot
 end
 
@@ -375,7 +390,7 @@ function Scanner.observeInventoryWindow(inventoryPage)
     end
 end
 
-function Scanner.observeSelectedContainer()
+function Scanner.observeSelectedContainer(forceRefresh)
     local player = getPlayer()
     if not player then return nil end
     local loot = getPlayerLoot(player:getPlayerNum())
@@ -387,8 +402,10 @@ function Scanner.observeSelectedContainer()
     local containerType = tostring(safeCall(container, "getType", ""))
     if containerType == "floor" then return nil end
     local id = containerIdentity(container)
+    local isNewSelection = id ~= Scanner.lastSelectedContainerId
+    if not isNewSelection and not forceRefresh then return nil end
     local snapshot = Scanner.observeContainer(container, "selected_by_player", true)
-    if id ~= Scanner.lastSelectedContainerId then
+    if isNewSelection then
         Scanner.lastSelectedContainerId = id
         return {
             type = "container_opened",
@@ -410,54 +427,82 @@ local function scanObjectContainers(object, observation)
     end
 end
 
-function Scanner.scanBaseLoadedSquares()
-    local base = Scanner.baseZone
-    if not base then return 0 end
+function Scanner.setBaseZones(zones)
+    Scanner.baseZones = zones or {}
+    Scanner.baseIndexesBuilt = {}
+end
+
+function Scanner.isPlayerNearBase(base, padding)
+    local player = getPlayer()
+    if not base or not player then return false end
+    local dx = player:getX() - base.x
+    local dy = player:getY() - base.y
+    local radius = base.radius + math.max(0, tonumber(padding) or 0)
+    return dx * dx + dy * dy <= radius * radius
+end
+
+function Scanner.refreshKnownContainers()
+    local refreshed = 0
+    for id, container in pairs(Scanner.containerRefs) do
+        local ok, snapshot = pcall(Scanner.containerSnapshot, container, "save_boundary_refresh")
+        if ok and snapshot then
+            Scanner.knownContainers[id] = snapshot
+            refreshed = refreshed + 1
+        end
+    end
+    return refreshed
+end
+
+function Scanner.refreshKnownBaseContainers()
+    if #Scanner.baseZones == 0 then return 0 end
+    local refreshed = 0
+    for id, container in pairs(Scanner.containerRefs) do
+        local position = squarePosition(container)
+        if containingBase(position) then
+            local ok, snapshot = pcall(Scanner.containerSnapshot, container, "base_save_refresh")
+            if ok and snapshot then
+                Scanner.knownContainers[id] = snapshot
+                refreshed = refreshed + 1
+            end
+        end
+    end
+    return refreshed
+end
+
+function Scanner.scanBaseLoadedSquares(zoneId)
     local cell = getCell()
+    if not cell then return 0 end
     local scanned = 0
-    for x = base.x - base.radius, base.x + base.radius do
-        for y = base.y - base.radius, base.y + base.radius do
-            local dx = x - base.x
-            local dy = y - base.y
-            if dx * dx + dy * dy <= base.radius * base.radius then
-                for z = base.minZ, base.maxZ do
-                    local square = cell:getGridSquare(x, y, z)
-                    if square then
-                        scanned = scanned + 1
-                        local objects = square:getObjects()
-                        for index = 0, objects:size() - 1 do
-                            scanObjectContainers(objects:get(index), "loaded_base_zone")
-                        end
-                        local staticObjects = square:getStaticMovingObjects()
-                        for index = 0, staticObjects:size() - 1 do
-                            scanObjectContainers(staticObjects:get(index), "loaded_base_zone")
+    for _, base in ipairs(Scanner.baseZones) do
+        local selected = not zoneId or base.id == zoneId
+        local alreadyBuilt = Scanner.baseIndexesBuilt[base.id] == true
+        if selected and not alreadyBuilt and Scanner.isPlayerNearBase(base, 15) then
+            for x = base.x - base.radius, base.x + base.radius do
+                for y = base.y - base.radius, base.y + base.radius do
+                    local dx = x - base.x
+                    local dy = y - base.y
+                    if dx * dx + dy * dy <= base.radius * base.radius then
+                        for z = base.minZ, base.maxZ do
+                            local square = cell:getGridSquare(x, y, z)
+                            if square then
+                                scanned = scanned + 1
+                                local objects = square:getObjects()
+                                for index = 0, objects:size() - 1 do
+                                    scanObjectContainers(objects:get(index), "loaded_base_zone")
+                                end
+                                local staticObjects = square:getStaticMovingObjects()
+                                for index = 0, staticObjects:size() - 1 do
+                                    scanObjectContainers(staticObjects:get(index), "loaded_base_zone")
+                                end
+                            end
                         end
                     end
                 end
             end
+            Scanner.baseIndexesBuilt[base.id] = true
         end
     end
     return scanned
-end
-
-function Scanner.setBaseHere(radius)
-    local player = getPlayer()
-    if not player then return false end
-    local x = math.floor(player:getX())
-    local y = math.floor(player:getY())
-    local z = math.floor(player:getZ())
-    Scanner.baseZone = {
-        id = "main_base",
-        name = "Main base",
-        shape = "circle",
-        x = x,
-        y = y,
-        z = z,
-        radius = math.max(1, math.floor(tonumber(radius) or 30)),
-        minZ = z - 2,
-        maxZ = z + 5,
-    }
-    return true
 end
 
 local function characterSnapshot(player)
@@ -505,8 +550,14 @@ function Scanner.currentState()
     local world = getWorld()
     local worldName = world and safeCall(world, "getWorld", "unknown") or "unknown"
     local gameMode = world and safeCall(world, "getGameMode", "unknown") or "unknown"
-    local baseZones = {}
-    if Scanner.baseZone then baseZones[1] = Scanner.baseZone end
+    local baseZones = Scanner.baseZones
+    local baseLoadedSquaresScanned = false
+    for _, built in pairs(Scanner.baseIndexesBuilt) do
+        if built then
+            baseLoadedSquaresScanned = true
+            break
+        end
+    end
 
     return {
         schema = "pz-monitoring-bot/mod-snapshot/v1",
@@ -528,7 +579,8 @@ function Scanner.currentState()
             coverage = {
                 runtimeLoadedOnly = true,
                 openedContainersRememberedThisSession = true,
-                baseLoadedSquaresScanned = Scanner.baseZone ~= nil,
+                baseLoadedSquaresScanned = baseLoadedSquaresScanned,
+                configuredBaseCount = #Scanner.baseZones,
                 unloadedRemoteContainersComplete = false,
             },
         },

@@ -94,6 +94,12 @@ end
 function PZMB.Json.appendLine(fileName, value)
     local writer = getFileWriter(fileName, true, true)
     if not writer then
+        -- Append mode can return nil when the target does not exist yet.
+        local creator = getFileWriter(fileName, true, false)
+        if creator then creator:close() end
+        writer = getFileWriter(fileName, true, true)
+    end
+    if not writer then
         error("getFileWriter returned nil for " .. tostring(fileName))
     end
     local ok, encoded = pcall(PZMB.Json.encode, value)

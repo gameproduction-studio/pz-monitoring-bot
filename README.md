@@ -36,11 +36,17 @@ save-file chunk auditor for unloaded remote areas is a later integration stage.
 ```
 
 Then enable `pz monitoring bot` in Project Zomboid, load any single-player
-save, and use the world context menu:
+save, right-click in the world, and open `Органайзер выжившего`:
 
-- `Set base here (30 tiles)`;
-- `Export current state now`;
-- `Clear base`.
+- `Установить базу здесь (радиус 30 клеток)` creates a named monitoring zone;
+- `Мои базы` lists every zone for the current save with coordinates and radius;
+- each base submenu can rename it, scan its resources on demand, or safely delete
+  only the organizer entry;
+- `Запомнить открытый контейнер` records the currently selected world container;
+- `Обновить все записи о ресурсах` writes a fresh snapshot.
+
+Multiple zones such as a bunker, farm, and main home may coexist. Heavy square
+scanning runs only on save or an explicit organizer command, never every frame.
 
 Start the foreground relay:
 
@@ -49,6 +55,28 @@ Start the foreground relay:
 ```
 
 Stop it with `Ctrl+C`. It is not installed as a service or left running.
+
+## Automatic one-button mode
+
+Install the background relay once:
+
+```powershell
+.\scripts\install-autostart.ps1
+```
+
+It starts immediately and again at Windows sign-in. From then on the normal
+workflow is only:
+
+1. use `Обновить все записи о ресурсах` in the in-game organizer;
+2. the mod writes local telemetry;
+3. the background relay waits for both JSON files to stabilize;
+4. it updates only the three `live` files and pushes them to GitHub;
+5. ChatGPT rereads the raw URLs on the next user turn.
+
+The relay polls two file timestamps every five seconds; it never scans game
+containers and therefore does not affect in-game FPS. Stop it with
+`.\scripts\stop-relay.ps1`. Remove Windows autostart with
+`.\scripts\uninstall-autostart.ps1`.
 
 ## Test
 
@@ -72,12 +100,18 @@ Before GitHub publishing, attach these files manually. Ordinary ChatGPT does
 not receive background push events; practical realtime means it rereads them
 on every user turn.
 
+For a copy-paste connection check against a real snapshot, use
+[the Russian test prompt](docs/CHATGPT_TEST_PROMPT_RU.md). It includes a
+handshake that verifies the active save, character, base, coverage, totals,
+and a user-renamed container without leaking those expected answers into the
+prompt itself.
+
 ## Safety
 
 The mod does not add private tags to the save. The first relay version does not
 open save files at all. Telemetry lives in `Zomboid/Lua`; state and logs live
-under `app/runtime`. Permanent watching and auto-push stay disabled until a
-real in-game smoke test passes.
+under `app/runtime`. The relay reads only exported telemetry and never modifies the Project
+Zomboid save.
 
 See [data contract](docs/DATA_CONTRACT_RU.md) and
 [test report](docs/TEST_REPORT_RU.md).

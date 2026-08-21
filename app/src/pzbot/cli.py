@@ -238,6 +238,29 @@ def _telemetry_signature(settings: Settings) -> tuple[tuple[str, int, int], ...]
     return tuple(result)
 
 
+def _stable_telemetry_signature(
+    settings: Settings,
+) -> tuple[tuple[str, int, int], ...]:
+    """Wait until both mod JSON files stop changing before reading them."""
+    candidate = _telemetry_signature(settings)
+    if not candidate:
+        return ()
+
+    required = max(1, settings.stable_polls)
+    stable = 1
+    while stable < required:
+        time.sleep(max(0.0, settings.stable_interval_seconds))
+        current = _telemetry_signature(settings)
+        if not current:
+            return ()
+        if current == candidate:
+            stable += 1
+        else:
+            candidate = current
+            stable = 1
+    return candidate
+
+
 def monitor_mod(settings: Settings) -> int:
     """Watch only mod telemetry; never open a Project Zomboid save."""
     LOG.info("mod telemetry relay started; stop with Ctrl+C")
@@ -247,14 +270,16 @@ def monitor_mod(settings: Settings) -> int:
             try:
                 current = _telemetry_signature(settings)
                 if current and current != previous:
-                    result = relay_once(settings)
-                    previous = current
-                    LOG.info(
-                        "relay ok items=%s changes=%s publication=%s",
-                        result["items"],
-                        len(result["changes"]),
-                        result["publication"],
-                    )
+                    stable = _stable_telemetry_signature(settings)
+                    if stable and stable != previous:
+                        result = relay_once(settings)
+                        previous = stable
+                        LOG.info(
+                            "relay ok items=%s changes=%s publication=%s",
+                            result["items"],
+                            len(result["changes"]),
+                            result["publication"],
+                        )
             except Exception:
                 LOG.exception("mod telemetry relay failed")
             time.sleep(settings.poll_seconds)
