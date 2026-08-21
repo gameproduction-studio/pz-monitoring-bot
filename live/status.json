@@ -3,37 +3,37 @@
   "schemaVersion": "1.0.0",
   "ok": true,
   "parsingSuccessful": true,
-  "lastScanAt": "2026-08-21T13:42:45+00:00",
-  "lastGameExportEpochMs": 1787319747408,
+  "lastScanAt": "2026-08-21T16:07:29+00:00",
+  "lastGameExportEpochMs": 1787328444318,
   "activeSave": {
     "gameMode": "Sandbox",
-    "id": "Sandbox:2026-08-21_12-47-39",
-    "name": "2026-08-21_12-47-39"
+    "id": "Sandbox:2026-08-21_16-42-36",
+    "name": "2026-08-21_16-42-36"
   },
   "game": {
     "build": "42.20",
-    "worldAgeHours": 5.57476806640625
+    "worldAgeHours": 25.690509796142578
   },
   "coverage": {
-    "baseLoadedSquaresScanned": true,
-    "configuredBaseCount": 1,
+    "baseLoadedSquaresScanned": false,
+    "configuredBaseCount": 0,
     "openedContainersRememberedThisSession": true,
     "runtimeLoadedOnly": true,
     "unloadedRemoteContainersComplete": false
   },
-  "changesThisScan": 0,
-  "itemInstances": 617,
+  "changesThisScan": 42,
+  "itemInstances": 42,
   "publication": "automatic_direct_push_to_main",
   "readOnlySource": true,
   "relayReadGameSave": false,
   "modStatus": {
     "counts": {
-      "containers": 46,
-      "itemInstances": 617
+      "containers": 0,
+      "itemInstances": 42
     },
     "game": {
       "build": "42.20",
-      "worldAgeHours": 5.57476806640625
+      "worldAgeHours": 25.690509796142578
     },
     "ok": true,
     "parsingSuccessful": true,
@@ -41,12 +41,12 @@
     "reason": "post_save",
     "save": {
       "gameMode": "Sandbox",
-      "id": "Sandbox:2026-08-21_12-47-39",
-      "name": "2026-08-21_12-47-39"
+      "id": "Sandbox:2026-08-21_16-42-36",
+      "name": "2026-08-21_16-42-36"
     },
     "schema": "pz-monitoring-bot/mod-status/v1",
     "schemaVersion": "0.3.0",
     "sequence": 2,
-    "writtenAtEpochMs": 1787319747744
+    "writtenAtEpochMs": 1787328444339
   }
 }
