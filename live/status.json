@@ -1,8 +1,52 @@
 {
   "schema": "pz-monitoring-bot/status/v2",
   "schemaVersion": "1.0.0",
-  "ok": false,
-  "parsingSuccessful": false,
-  "ready": false,
-  "error": "No real game telemetry has been relayed yet."
+  "ok": true,
+  "parsingSuccessful": true,
+  "lastScanAt": "2026-08-21T12:04:42+00:00",
+  "lastGameExportEpochMs": 1787313521034,
+  "activeSave": {
+    "gameMode": "Sandbox",
+    "id": "Sandbox:2026-08-21_12-47-39",
+    "name": "2026-08-21_12-47-39"
+  },
+  "game": {
+    "build": "42.20",
+    "worldAgeHours": 5.1135663986206055
+  },
+  "coverage": {
+    "baseLoadedSquaresScanned": true,
+    "configuredBaseCount": 1,
+    "openedContainersRememberedThisSession": true,
+    "runtimeLoadedOnly": true,
+    "unloadedRemoteContainersComplete": false
+  },
+  "changesThisScan": 617,
+  "itemInstances": 617,
+  "publication": "local_only",
+  "readOnlySource": true,
+  "relayReadGameSave": false,
+  "modStatus": {
+    "counts": {
+      "containers": 46,
+      "itemInstances": 617
+    },
+    "game": {
+      "build": "42.20",
+      "worldAgeHours": 5.1135663986206055
+    },
+    "ok": true,
+    "parsingSuccessful": true,
+    "readOnlyGameState": true,
+    "reason": "manual_base_scan",
+    "save": {
+      "gameMode": "Sandbox",
+      "id": "Sandbox:2026-08-21_12-47-39",
+      "name": "2026-08-21_12-47-39"
+    },
+    "schema": "pz-monitoring-bot/mod-status/v1",
+    "schemaVersion": "0.3.0",
+    "sequence": 1,
+    "writtenAtEpochMs": 1787313521347
+  }
 }

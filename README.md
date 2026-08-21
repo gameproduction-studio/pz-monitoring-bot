@@ -36,11 +36,17 @@ save-file chunk auditor for unloaded remote areas is a later integration stage.
 ```
 
 Then enable `pz monitoring bot` in Project Zomboid, load any single-player
-save, and use the world context menu:
+save, right-click in the world, and open `Органайзер выжившего`:
 
-- `Set base here (30 tiles)`;
-- `Export current state now`;
-- `Clear base`.
+- `Установить базу здесь (радиус 30 клеток)` creates a named monitoring zone;
+- `Мои базы` lists every zone for the current save with coordinates and radius;
+- each base submenu can rename it, scan its resources on demand, or safely delete
+  only the organizer entry;
+- `Запомнить открытый контейнер` records the currently selected world container;
+- `Обновить все записи о ресурсах` writes a fresh snapshot.
+
+Multiple zones such as a bunker, farm, and main home may coexist. Heavy square
+scanning runs only on save or an explicit organizer command, never every frame.
 
 Start the foreground relay:
 
@@ -71,6 +77,12 @@ raw URLs for:
 Before GitHub publishing, attach these files manually. Ordinary ChatGPT does
 not receive background push events; practical realtime means it rereads them
 on every user turn.
+
+For a copy-paste connection check against a real snapshot, use
+[the Russian test prompt](docs/CHATGPT_TEST_PROMPT_RU.md). It includes a
+handshake that verifies the active save, character, base, coverage, totals,
+and a user-renamed container without leaking those expected answers into the
+prompt itself.
 
 ## Safety
 

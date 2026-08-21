@@ -10,7 +10,11 @@ Export.lastError = nil
 Export.lastReason = nil
 Export.currentStateFile = "pzmb_current_state.json"
 Export.statusFile = "pzmb_status.json"
-Export.eventsFile = "pzmb_changes.jsonl"
+-- The game sandbox rejects the .jsonl extension in Build 42.20.3.
+-- The relay publishes this JSON-lines stream as live/changes.jsonl.
+Export.eventsFile = "pzmb_changes.txt"
+Export.eventsEnabled = true
+Export.eventsErrorLogged = false
 
 local function nowMillis()
     if getTimestampMs then return getTimestampMs() end
@@ -80,9 +84,18 @@ function Export.write(reason)
 end
 
 function Export.appendEvent(event)
-    if not event then return end
+    if not event or not Export.eventsEnabled then return false end
     event.exportedAtEpochMs = nowMillis()
-    PZMB.Json.appendLine(Export.eventsFile, event)
+    local ok, err = pcall(PZMB.Json.appendLine, Export.eventsFile, event)
+    if not ok then
+        Export.eventsEnabled = false
+        if not Export.eventsErrorLogged then
+            print("[pz monitoring bot] event journal disabled for this session: " .. tostring(err))
+            Export.eventsErrorLogged = true
+        end
+        return false
+    end
+    return true
 end
 
 return Export

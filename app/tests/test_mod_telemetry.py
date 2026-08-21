@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 
 from pzbot.assistant_views import build_assistant_views
@@ -194,3 +195,76 @@ def test_lua_scanner_was_not_truncated():
     text = scanner.read_text(encoding="utf-8")
     assert text.rstrip().endswith("return Scanner")
     assert "function Scanner.currentState()" in text
+    assert "next(Scanner.baseIndexesBuilt)" not in text
+    assert "for _, built in pairs(Scanner.baseIndexesBuilt) do" in text
+
+
+def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
+    root = Path(__file__).parents[2]
+    lua_root = root / "mod/PZMonitoringBot/common/media/lua/client/PZMonitoringBot"
+    events = (lua_root / "PZMB_Events.lua").read_text(encoding="utf-8")
+    scanner = (lua_root / "PZMB_Scanner.lua").read_text(encoding="utf-8")
+    ui = (lua_root / "PZMB_UI.lua").read_text(encoding="utf-8")
+
+    assert "Events.OnPlayerUpdate" not in events
+    assert "Events.EveryOneMinute" not in events
+    assert "Events.EveryTenMinutes" not in events
+    assert "Events.OnContainerUpdate" not in events
+    assert "Events.OnPostSave.Add(onPostSave)" in events
+    assert "Events.OnRefreshInventoryWindowContainers" not in events
+    assert "observeSelectedContainer(false)" in events
+    assert 'if parent then customName = safeCall(container, "getCustomName", nil) end' in scanner
+    assert 'tr("UI_PZMB_RememberContainer")' in ui
+    assert "if not isNewSelection and not forceRefresh then return nil end" in scanner
+    assert "function Scanner.refreshKnownContainers()" in scanner
+    assert 'PZMB.Export.write("base_set")' not in ui
+
+
+def test_lua_output_uses_build_42_20_3_writable_extensions_and_fail_closed_journal():
+    root = Path(__file__).parents[2]
+    lua_root = root / "mod/PZMonitoringBot/common/media/lua/client/PZMonitoringBot"
+    config = (lua_root / "PZMB_Config.lua").read_text(encoding="utf-8")
+    export = (lua_root / "PZMB_Export.lua").read_text(encoding="utf-8")
+
+    assert 'Config.fileName = "pzmb_bases.txt"' in config
+    assert 'Export.eventsFile = "pzmb_changes.txt"' in export
+    assert 'Config.fileName = "pzmb_bases.tsv"' not in config
+    assert 'Export.eventsFile = "pzmb_changes.jsonl"' not in export
+    assert "Export.eventsEnabled = false" in export
+
+
+def test_lua_supports_named_multiple_base_zones_and_safe_removal():
+    root = Path(__file__).parents[2]
+    lua_root = root / "mod/PZMonitoringBot/common/media/lua/client/PZMonitoringBot"
+    config = (lua_root / "PZMB_Config.lua").read_text(encoding="utf-8")
+    scanner = (lua_root / "PZMB_Scanner.lua").read_text(encoding="utf-8")
+    ui = (lua_root / "PZMB_UI.lua").read_text(encoding="utf-8")
+
+    assert '# save|id|name|x|y|z|radius|minZ|maxZ' in config
+    assert "Config.records[key][#Config.records[key] + 1] = zone" in config
+    assert "function Config.renameBase(id, newName)" in config
+    assert "function Config.removeBase(id)" in config
+    assert "function Config.findContainingBase(x, y, z)" in config
+    assert "Scanner.baseZones = Scanner.baseZones or {}" in scanner
+    assert "function Scanner.setBaseZones(zones)" in scanner
+    assert "baseZoneName = owningBase and owningBase.name or nil" in scanner
+    assert 'tr("UI_PZMB_Organizer")' in ui
+    assert 'tr("UI_PZMB_MyBases"' in ui
+    assert 'tr("UI_PZMB_DeleteBase")' in ui
+    assert "ISModalDialog:new" in ui
+    assert ui.isascii()
+    assert config.isascii()
+
+    ru_txt = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/RU/UI_RU.txt"
+    en_txt = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/EN/UI_EN.txt"
+    ru_json = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/RU/UI.json"
+    en_json = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/EN/UI.json"
+
+    ru_translations = json.loads(ru_json.read_text(encoding="utf-8"))
+    en_translations = json.loads(en_json.read_text(encoding="utf-8"))
+    organizer_ru = "\u041e\u0440\u0433\u0430\u043d\u0430\u0439\u0437\u0435\u0440 \u0432\u044b\u0436\u0438\u0432\u0448\u0435\u0433\u043e"
+    assert ru_translations["UI_PZMB_Organizer"] == organizer_ru
+    assert "UI_PZMB_DeleteBase" in ru_translations
+    assert en_translations["UI_PZMB_Organizer"] == "Survivor Organizer"
+    assert ru_txt.exists() and en_txt.exists()
+    assert not ru_json.read_bytes().startswith(b"\\xef\\xbb\\xbf")
