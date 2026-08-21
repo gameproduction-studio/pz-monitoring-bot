@@ -171,17 +171,161 @@ def build_chatgpt_state(
     status: dict[str, Any] | None = None,
     events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Create a connector-safe view without losing decision-relevant facts."""
+    """Create a small connector-safe view without losing gameplay facts."""
     character = copy.deepcopy(current_state.get("character") or {})
     character.pop("inventory", None)
 
     views = copy.deepcopy(current_state.get("assistantViews") or {})
     views.pop("ownedItemsByLocation", None)
-    for item in ((views.get("search") or {}).get("items") or []):
-        item.pop("tags", None)
+    views.pop("ownedCountsByFullType", None)
+
+    location_rows: list[list[Any]] = []
+    location_ids: dict[str, str] = {}
+
+    def intern_location(location: dict[str, Any] | None) -> str | None:
+        if not location:
+            return None
+        key = json.dumps(
+            location,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        location_id = location_ids.get(key)
+        if location_id is not None:
+            return location_id
+        location_id = f"L{len(location_rows) + 1}"
+        location_ids[key] = location_id
+        location_rows.append(
+            [
+                location_id,
+                location.get("label"),
+                location.get("path"),
+                location.get("containerId"),
+                location.get("position"),
+                location.get("owned"),
+                location.get("stale"),
+            ]
+        )
+        return location_id
+
+    search = views.get("search") or {}
+    search_fields = [
+        "itemId",
+        "fullType",
+        "name_ru",
+        "category",
+        "condition",
+        "conditionMax",
+        "isPortableContainer",
+        "capacity",
+        "weightReduction",
+        "availability",
+        "distanceTiles",
+        "directionFromPlayer",
+        "locationId",
+    ]
+    search_rows = []
+    for item in search.get("items") or []:
+        search_rows.append(
+            [
+                item.get("itemId"),
+                item.get("fullType"),
+                item.get("name_ru"),
+                item.get("category"),
+                item.get("condition"),
+                item.get("conditionMax"),
+                item.get("isPortableContainer"),
+                item.get("capacity"),
+                item.get("weightReduction"),
+                item.get("availability"),
+                item.get("distanceTiles"),
+                item.get("directionFromPlayer"),
+                intern_location(item.get("location")),
+            ]
+        )
+    search["fields"] = search_fields
+    search["items"] = search_rows
+
     food = views.get("food") or {}
     food.pop("highCalorieOwned", None)
     food.pop("cookingCandidates", None)
+    food_fields = [
+        "itemId",
+        "fullType",
+        "name_ru",
+        "caloriesReportedByGame",
+        "carbohydrates",
+        "lipids",
+        "proteins",
+        "hungerChange",
+        "freshness",
+        "frozen",
+        "freezingTime",
+        "cooked",
+        "burnt",
+        "recipeOptions",
+        "rotten",
+        "cookable",
+        "dangerousUncooked",
+        "foodType",
+        "evolvedRecipeName",
+        "replaceOnCooked",
+        "hoursUntilStaleAtRoomTemperature",
+        "hoursUntilRottenAtRoomTemperature",
+        "locationId",
+    ]
+    for group in ("owned", "observedOnly"):
+        rows = []
+        for item in food.get(group) or []:
+            rows.append(
+                [
+                    item.get("itemId"),
+                    item.get("fullType"),
+                    item.get("name_ru"),
+                    item.get("caloriesReportedByGame"),
+                    item.get("carbohydrates"),
+                    item.get("lipids"),
+                    item.get("proteins"),
+                    item.get("hungerChange"),
+                    item.get("freshness"),
+                    item.get("frozen"),
+                    item.get("freezingTime"),
+                    item.get("cooked"),
+                    item.get("burnt"),
+                    item.get("recipeOptions"),
+                    item.get("rotten"),
+                    item.get("cookable"),
+                    item.get("dangerousUncooked"),
+                    item.get("foodType"),
+                    item.get("evolvedRecipeName"),
+                    item.get("replaceOnCooked"),
+                    item.get("hoursUntilStaleAtRoomTemperature"),
+                    item.get("hoursUntilRottenAtRoomTemperature"),
+                    intern_location(item.get("location")),
+                ]
+            )
+        food[group] = rows
+    food["fields"] = food_fields
+
+    views["locations"] = {
+        "fields": [
+            "locationId",
+            "label",
+            "path",
+            "containerId",
+            "position",
+            "owned",
+            "stale",
+        ],
+        "items": location_rows,
+    }
+    contract = views.get("contract") or {}
+    contract["compactRows"] = (
+        "search.items and food owned/observedOnly are arrays. Map each value "
+        "by the matching fields array and resolve locationId through locations."
+    )
+    views["contract"] = contract
 
     world = current_state.get("world") or {}
 
@@ -203,7 +347,7 @@ def build_chatgpt_state(
         ]
 
     state = {
-        "schema": "pz-monitoring-bot/chatgpt-state/v1",
+        "schema": "pz-monitoring-bot/chatgpt-state/v2",
         "status": copy.deepcopy(status or {}),
         "schemaVersion": current_state.get("schemaVersion"),
         "updatedAt": current_state.get("updatedAt"),

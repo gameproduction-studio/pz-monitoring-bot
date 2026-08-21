@@ -51,7 +51,11 @@ status.modStatus.sequence, status.modStatus.reason и status.coverage.
 - Не подгоняй ответ под ожидаемые предметы. Если данных нет, скажи «не видно в
   снимке» и укажи, связано ли это с coverage.
 
-Для поиска используй assistantViews.search.items. Для еды используй
+Для поиска используй assistantViews.search.items. В схеме v2 это компактные
+строки-массивы: сопоставляй значения с assistantViews.search.fields. Поле
+locationId связывай с assistantViews.locations.items через
+assistantViews.locations.fields. Для еды аналогично сопоставляй строки owned и
+observedOnly с assistantViews.food.fields. Для еды используй
 assistantViews.food. Для машин и предупреждений используй
 assistantViews.vehicles. Пользовательское имя контейнера важнее общего типа, но
 всегда добавляй координаты. Трупы не включай в мои запасы. Машину считай

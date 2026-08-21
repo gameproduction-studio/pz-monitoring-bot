@@ -18,7 +18,12 @@ OpenAI API не используется. Перед каждым ответом
 > `observed_world` и `last_known_stale`. Последнее - лишь прежнее известное
 > место, которое надо перепроверить.
 >
-> Для поиска используй `assistantViews.search.items`. Фильтруй по названию,
+> В схеме v2 ssistantViews.search.items — строки-массивы. Сначала
+> сопоставь их позиции с ssistantViews.search.fields, а locationId — с
+> ssistantViews.locations.fields/items. Строки еды аналогично сопоставляй с
+> ssistantViews.food.fields.
+>
+> Для поиска используй ssistantViews.search.items. Фильтруй по названию,
 > FullType и категории. Для сумок сравни `capacity` и
 > `weightReduction`, затем выбирай минимальное `distanceTiles`. Сообщай
 > `location.label`, координаты, направление, расстояние и `availability`.

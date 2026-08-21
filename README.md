@@ -101,7 +101,7 @@ alerts, and the largest-then-nearest hiking-bag search.
 Use [the Russian ChatGPT playbook](docs/CHATGPT_PLAYBOOK_RU.md). Give ChatGPT
 the GitHub URL for:
 
-- `live/chatgpt_state.json` (connector-safe gameplay facts, normally below 1 MB);
+- `live/chatgpt_state.json` (compact v2 gameplay facts, currently about 300 KB);
 
 `live/current_state.json`, `status.json`, and `changes.jsonl` remain local diagnostic
 files. Ordinary ChatGPT reads `chatgpt_state.json`; it embeds synchronization

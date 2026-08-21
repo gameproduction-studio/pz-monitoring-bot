@@ -44,6 +44,9 @@ https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/chatgp
 - itemId идентифицирует конкретный экземпляр; fullType — стабильный тип.
 - Русское название выводи только из name_ru/nameLocalized. Не переводи его
   самостоятельно.
+- В схеме v2 search.items и списки еды — компактные строки-массивы.
+  Сопоставляй позиции со списком fields соответствующего раздела; locationId
+  разрешай через assistantViews.locations.fields/items.
 - Не суммируй переносной контейнер и его contents дважды.
 - Различай предмет у персонажа, предмет в принадлежащем хранилище, лишь
   наблюдавшийся предмет мира и last_known_stale.

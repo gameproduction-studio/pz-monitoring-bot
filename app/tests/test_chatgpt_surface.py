@@ -46,6 +46,14 @@ def test_chatgpt_state_removes_large_duplicate_views_but_keeps_facts():
                         "fullType": "Base.Hammer",
                         "name_ru": "Молоток",
                         "tags": ["base:tool"],
+                        "location": {
+                            "label": "Полка",
+                            "path": "world/shelf-1",
+                            "containerId": "shelf-1",
+                            "position": {"x": 1, "y": 2, "z": 0},
+                            "owned": True,
+                            "stale": False,
+                        },
                     }
                 ]
             },
@@ -66,19 +74,29 @@ def test_chatgpt_state_removes_large_duplicate_views_but_keeps_facts():
         events=[{"kind": "move", "itemId": "1"}],
     )
 
+    assert compact["schema"] == "pz-monitoring-bot/chatgpt-state/v2"
     assert compact["status"]["ok"] is True
     assert compact["recentChanges"] == [{"kind": "move", "itemId": "1"}]
     assert compact["character"]["forename"] == "Нэйтан"
     assert "inventory" not in compact["character"]
     assert "ownedItemsByLocation" not in compact["assistantViews"]
-    assert "tags" not in compact["assistantViews"]["search"]["items"][0]
     assert "highCalorieOwned" not in compact["assistantViews"]["food"]
     assert compact["assistantViews"]["vehicles"]["owned"][0]["vehicleId"] == "7"
     assert compact["worldIndex"]["containers"][0]["itemInstances"] == 1
-    assert (
-        "condition"
-        not in compact["assistantViews"]["search"]["items"][0]
-    )
+
+    search = compact["assistantViews"]["search"]
+    item = dict(zip(search["fields"], search["items"][0], strict=True))
+    assert item["itemId"] == "1"
+    assert item["fullType"] == "Base.Hammer"
+    assert item["name_ru"] == "Молоток"
+    assert item["condition"] is None
+    assert item["locationId"] == "L1"
+    assert "tags" not in search["fields"]
+
+    locations = compact["assistantViews"]["locations"]
+    location = dict(zip(locations["fields"], locations["items"][0], strict=True))
+    assert location["label"] == "Полка"
+    assert location["containerId"] == "shelf-1"
 
 
 def test_public_changes_journal_is_bounded_and_keeps_complete_json_lines(tmp_path):
