@@ -60,8 +60,14 @@ def test_chatgpt_state_removes_large_duplicate_views_but_keeps_facts():
         "source": {"primary": "in_game_mod"},
     }
 
-    compact = build_chatgpt_state(current)
+    compact = build_chatgpt_state(
+        current,
+        status={"ok": True, "activeSave": {"id": "Sandbox:test"}},
+        events=[{"kind": "move", "itemId": "1"}],
+    )
 
+    assert compact["status"]["ok"] is True
+    assert compact["recentChanges"] == [{"kind": "move", "itemId": "1"}]
     assert compact["character"]["forename"] == "Нэйтан"
     assert "inventory" not in compact["character"]
     assert "ownedItemsByLocation" not in compact["assistantViews"]

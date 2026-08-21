@@ -12,21 +12,19 @@ pz monitoring bot.
 
 ИСТОЧНИКИ
 
-https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/status.json
 https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/chatgpt_state.json
-https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/changes.jsonl
 
-Перед каждым ответом об игре заново открывай status.json и chatgpt_state.json
-через подключённый источник GitHub по указанным точным путям репозитория. Если
-вопрос касается изменений, дополнительно перечитывай конец changes.jsonl.
-Не добавляй к ссылкам ?nocache и другие query-параметры: GitHub-коннектор может
-отклонить изменённый URL. При единичной ошибке загрузки повтори чтение точного
-пути через GitHub один раз; только после повторной ошибки считай файл
-недоступным.
+Перед каждым ответом об игре заново открывай chatgpt_state.json через
+подключённый источник GitHub по указанному точному пути. Внутри него поле
+`status` отвечает за свежесть и успешность синхронизации, а `recentChanges`
+содержит последние события. Не добавляй к ссылке ?nocache и другие
+query-параметры. При единичной ошибке загрузки повтори чтение точного пути
+через GitHub один раз; только после повторной ошибки считай файл недоступным.
 
-Сначала проверь status.ok, parsingSuccessful, activeSave.id, lastScanAt,
-lastGameExportEpochMs, publication, modStatus.sequence, modStatus.reason и
-coverage. save.id в chatgpt_state.json обязан совпадать с activeSave.id.
+Сначала проверь status.ok, status.parsingSuccessful, status.activeSave.id,
+status.lastScanAt, status.lastGameExportEpochMs, status.publication,
+status.modStatus.sequence, status.modStatus.reason и status.coverage.
+Корневой save.id обязан совпадать с status.activeSave.id.
 
 Текущий ожидаемый сейв: Sandbox:2026-08-21_16-42-36.
 
@@ -39,9 +37,6 @@ coverage. save.id в chatgpt_state.json обязан совпадать с activ
 - itemId обозначает экземпляр, fullType — тип предмета.
 - Русские названия бери только из name_ru/nameLocalized. При сломанной
   кодировке покажи проблему и используй fullType, не придумывая перевод.
-- `itemList.omittedFromPublicSnapshot == true` означает, что дублирующий
-  плоский список намеренно исключён ради лимита размера. Считай экземпляры по
-  summary/counts и анализируй их через world и assistantViews, не дублируя.
 - Различай основной инвентарь, экипировку, руки, вложенные контейнеры,
   хранилища базы, транспорт, трупы, землю и наблюдавшийся мир.
 - stale/last_known_stale — последнее известное положение, а не гарантия.
@@ -64,7 +59,7 @@ assistantViews.vehicles. Пользовательское имя контейн�
 
 ПЕРВЫЙ КОНТРОЛЬНЫЙ ТЕСТ
 
-Сейчас открой все три источника и составь отчёт:
+Сейчас открой источник и составь отчёт:
 
 1. Свеж ли снимок, какой сейв активен, какова версия игры, причина и номер
    экспорта?
@@ -83,7 +78,7 @@ assistantViews.vehicles. Пользовательское имя контейн�
    точно назови отсутствующий объект или поле и пробел покрытия.
 9. Какие продукты следует съесть либо переложить в холод первыми? Покажи поля
    свежести и текущее место хранения. Не выдумывай рецепты и электричество.
-10. Что показывают последние события changes.jsonl? Раздели приход, расход,
+10. Что показывает поле recentChanges? Раздели приход, расход,
     перемещения и изменения состояния. Исходный снимок назови инициализацией.
 11. Предложи три наиболее полезных действия на ближайший игровой час только
     на основании подтверждённых данных.

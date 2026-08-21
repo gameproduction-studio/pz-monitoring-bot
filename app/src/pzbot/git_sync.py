@@ -60,10 +60,7 @@ class GitSync:
             raise RuntimeError(f"Not a Git repository: {repository}")
 
         live_paths = (
-            "live/current_state.json",
             "live/chatgpt_state.json",
-            "live/changes.jsonl",
-            "live/status.json",
         )
         missing = [
             str(repository / path)

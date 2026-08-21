@@ -165,7 +165,12 @@ def _without_none_values(value: Any) -> Any:
     return value
 
 
-def build_chatgpt_state(current_state: dict[str, Any]) -> dict[str, Any]:
+def build_chatgpt_state(
+    current_state: dict[str, Any],
+    *,
+    status: dict[str, Any] | None = None,
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Create a connector-safe view without losing decision-relevant facts."""
     character = copy.deepcopy(current_state.get("character") or {})
     character.pop("inventory", None)
@@ -199,6 +204,7 @@ def build_chatgpt_state(current_state: dict[str, Any]) -> dict[str, Any]:
 
     state = {
         "schema": "pz-monitoring-bot/chatgpt-state/v1",
+        "status": copy.deepcopy(status or {}),
         "schemaVersion": current_state.get("schemaVersion"),
         "updatedAt": current_state.get("updatedAt"),
         "game": copy.deepcopy(current_state.get("game") or {}),
@@ -219,6 +225,7 @@ def build_chatgpt_state(current_state: dict[str, Any]) -> dict[str, Any]:
         },
         "assistantViews": views,
         "source": copy.deepcopy(current_state.get("source") or {}),
+        "recentChanges": copy.deepcopy((events or [])[-100:]),
     }
     return _without_none_values(state)
 
@@ -313,7 +320,11 @@ def write_live_files(
     atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
     atomic_write_json(
         live_dir / "chatgpt_state.json",
-        build_chatgpt_state(current_state),
+        build_chatgpt_state(
+            current_state,
+            status=status,
+            events=events,
+        ),
         compact=True,
     )
     append_changes(live_dir / "changes.jsonl", events)
