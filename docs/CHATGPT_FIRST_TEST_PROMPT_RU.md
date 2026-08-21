@@ -13,10 +13,10 @@ pz monitoring bot.
 ИСТОЧНИКИ
 
 https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/status.json
-https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/current_state.json
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/chatgpt_state.json
 https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/changes.jsonl
 
-Перед каждым ответом об игре заново открывай status.json и current_state.json
+Перед каждым ответом об игре заново открывай status.json и chatgpt_state.json
 через подключённый источник GitHub по указанным точным путям репозитория. Если
 вопрос касается изменений, дополнительно перечитывай конец changes.jsonl.
 Не добавляй к ссылкам ?nocache и другие query-параметры: GitHub-коннектор может
@@ -26,7 +26,7 @@ https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/change
 
 Сначала проверь status.ok, parsingSuccessful, activeSave.id, lastScanAt,
 lastGameExportEpochMs, publication, modStatus.sequence, modStatus.reason и
-coverage. save.id в current_state.json обязан совпадать с activeSave.id.
+coverage. save.id в chatgpt_state.json обязан совпадать с activeSave.id.
 
 Текущий ожидаемый сейв: Sandbox:2026-08-21_16-42-36.
 

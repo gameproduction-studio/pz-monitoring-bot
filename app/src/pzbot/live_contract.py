@@ -16,6 +16,8 @@ from .state_diff import flatten_state
 
 SCHEMA_VERSION = "1.1.0"
 BUILD_COMPATIBILITY = ["42.20.2", "42.20.3"]
+MAX_PUBLIC_CHANGES_BYTES = 900_000
+TARGET_PUBLIC_CHANGES_BYTES = 750_000
 
 
 def utc_now() -> str:
@@ -151,6 +153,76 @@ def build_current_state(
     }
 
 
+def _without_none_values(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _without_none_values(item)
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, list):
+        return [_without_none_values(item) for item in value]
+    return value
+
+
+def build_chatgpt_state(current_state: dict[str, Any]) -> dict[str, Any]:
+    """Create a connector-safe view without losing decision-relevant facts."""
+    character = copy.deepcopy(current_state.get("character") or {})
+    character.pop("inventory", None)
+
+    views = copy.deepcopy(current_state.get("assistantViews") or {})
+    views.pop("ownedItemsByLocation", None)
+    for item in ((views.get("search") or {}).get("items") or []):
+        item.pop("tags", None)
+    food = views.get("food") or {}
+    food.pop("highCalorieOwned", None)
+    food.pop("cookingCandidates", None)
+
+    world = current_state.get("world") or {}
+
+    def container_index(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "containerId": value.get("containerId"),
+                "kind": value.get("kind"),
+                "displayName": value.get("displayName"),
+                "position": value.get("position"),
+                "ownership": value.get("ownership"),
+                "refrigerator": value.get("refrigerator"),
+                "freezer": value.get("freezer"),
+                "vehicleId": value.get("vehicleId"),
+                "vehicleName": value.get("vehicleName"),
+                "itemInstances": len(value.get("items") or []),
+            }
+            for value in values
+        ]
+
+    state = {
+        "schema": "pz-monitoring-bot/chatgpt-state/v1",
+        "schemaVersion": current_state.get("schemaVersion"),
+        "updatedAt": current_state.get("updatedAt"),
+        "game": copy.deepcopy(current_state.get("game") or {}),
+        "save": copy.deepcopy(current_state.get("save") or {}),
+        "ownership": copy.deepcopy(current_state.get("ownership") or {}),
+        "summary": copy.deepcopy(current_state.get("summary") or {}),
+        "countsByFullType": copy.deepcopy(
+            current_state.get("countsByFullType") or {}
+        ),
+        "ownedCountsByFullType": copy.deepcopy(
+            current_state.get("ownedCountsByFullType") or {}
+        ),
+        "character": character,
+        "worldIndex": {
+            "coverage": copy.deepcopy(world.get("coverage") or {}),
+            "containers": container_index(world.get("containers") or []),
+            "corpses": container_index(world.get("corpses") or []),
+        },
+        "assistantViews": views,
+        "source": copy.deepcopy(current_state.get("source") or {}),
+    }
+    return _without_none_values(state)
+
+
 def build_status(
     snapshot: dict[str, Any],
     *,
@@ -212,6 +284,20 @@ def append_changes(path: Path, events: list[dict[str, Any]]) -> None:
         stream.flush()
         os.fsync(stream.fileno())
 
+    if path.stat().st_size <= MAX_PUBLIC_CHANGES_BYTES:
+        return
+    data = path.read_bytes()
+    tail = data[-TARGET_PUBLIC_CHANGES_BYTES:]
+    first_newline = tail.find(b"\n")
+    if first_newline >= 0:
+        tail = tail[first_newline + 1 :]
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as stream:
+        stream.write(tail)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
 
 def write_live_files(
     live_dir: Path,
@@ -225,6 +311,11 @@ def write_live_files(
     # encoding plus omission of the duplicate flat list keeps it below the
     # ordinary ChatGPT source-size limit without discarding world facts.
     atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
+    atomic_write_json(
+        live_dir / "chatgpt_state.json",
+        build_chatgpt_state(current_state),
+        compact=True,
+    )
     append_changes(live_dir / "changes.jsonl", events)
     atomic_write_json(live_dir / "status.json", status)
 

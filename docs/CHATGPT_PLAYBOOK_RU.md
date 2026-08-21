@@ -1,7 +1,7 @@
 # Инструкция для обычного ChatGPT
 
 OpenAI API не используется. Перед каждым ответом об игре ChatGPT должен читать
-свежие raw-файлы `live/status.json` и `live/current_state.json`, а для истории
+свежие raw-файлы `live/status.json` и `live/chatgpt_state.json`, а для истории
 - конец `live/changes.jsonl`.
 
 ## Текст для инструкций проекта ChatGPT
@@ -19,7 +19,7 @@ OpenAI API не используется. Перед каждым ответом
 > место, которое надо перепроверить.
 >
 > Для поиска используй `assistantViews.search.items`. Фильтруй по названию,
-> FullType, тегам и категории. Для сумок сравни `capacity` и
+> FullType и категории. Для сумок сравни `capacity` и
 > `weightReduction`, затем выбирай минимальное `distanceTiles`. Сообщай
 > `location.label`, координаты, направление, расстояние и `availability`.
 > Не обещай предмет в неизведанной локации.

@@ -52,7 +52,12 @@ def test_publish_commit_is_limited_to_live_files(tmp_path):
     (tmp_path / ".git").mkdir()
     live = tmp_path / "live"
     live.mkdir()
-    for name in ("current_state.json", "changes.jsonl", "status.json"):
+    for name in (
+        "current_state.json",
+        "chatgpt_state.json",
+        "changes.jsonl",
+        "status.json",
+    ):
         (live / name).write_text("test", encoding="utf-8")
 
     sync = GitSync(publish_settings(tmp_path))
@@ -69,8 +74,9 @@ def test_publish_commit_is_limited_to_live_files(tmp_path):
 
     commit = next(args for args in calls if args and args[0] == "commit")
     assert "--only" in commit
-    assert commit[-3:] == (
+    assert commit[-4:] == (
         "live/current_state.json",
+        "live/chatgpt_state.json",
         "live/changes.jsonl",
         "live/status.json",
     )

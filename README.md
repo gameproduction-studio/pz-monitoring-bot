@@ -23,7 +23,7 @@ before each gameplay answer.
 - food/calorie/spoilage views and low-fuel/weak-part vehicle alerts for ChatGPT;
 - nearest-known-item search with bag capacity, distance, and direction;
 - durable local comparison state;
-- optional direct Git push of the three live files.
+- optional direct Git push of the four live files.
 
 ## Honest search boundary
 
@@ -78,7 +78,7 @@ workflow is only:
 1. use `Обновить все записи о ресурсах` in the in-game organizer;
 2. the mod writes local telemetry;
 3. the background relay waits for both JSON files to stabilize;
-4. it updates only the three `live` files and pushes them to GitHub;
+4. it updates only the four `live` files and pushes them to GitHub;
 5. ChatGPT rereads the raw URLs on the next user turn.
 
 The relay polls two file timestamps every five seconds; it never scans game
@@ -92,7 +92,7 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 29 passing tests, including sequential item snapshots,
+Current result: 32 passing tests, including sequential item snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
 alerts, and the largest-then-nearest hiking-bag search.
 
@@ -102,8 +102,12 @@ Use [the Russian ChatGPT playbook](docs/CHATGPT_PLAYBOOK_RU.md). Give ChatGPT
 raw URLs for:
 
 - `live/status.json`;
-- `live/current_state.json` (compact JSON, with duplicate flat item list omitted);
+- `live/chatgpt_state.json` (connector-safe gameplay facts, normally below 1 MB);
 - `live/changes.jsonl`.
+
+`live/current_state.json` remains the richer archival snapshot. Ordinary ChatGPT
+should read `chatgpt_state.json`, because its GitHub connector may return empty
+content for files larger than about 1 MB.
 
 Before GitHub publishing, attach these files manually. Ordinary ChatGPT does
 not receive background push events; practical realtime means it rereads them

@@ -61,6 +61,7 @@ class GitSync:
 
         live_paths = (
             "live/current_state.json",
+            "live/chatgpt_state.json",
             "live/changes.jsonl",
             "live/status.json",
         )

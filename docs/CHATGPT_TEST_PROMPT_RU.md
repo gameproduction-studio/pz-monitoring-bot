@@ -16,15 +16,15 @@ Zomboid. Персонаж и мир существуют в игре, а акт�
 1. Состояние синхронизации:
 https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/status.json
 
-2. Полный актуальный снимок:
-https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/current_state.json
+2. Актуальный снимок для ChatGPT:
+https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/chatgpt_state.json
 
 3. Журнал изменений:
 https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/changes.jsonl
 
 ПРОТОКОЛ КАЖДОГО МОЕГО СООБЩЕНИЯ ОБ ИГРЕ
 
-Перед каждым ответом заново открой status.json, затем current_state.json через
+Перед каждым ответом заново открой status.json, затем chatgpt_state.json через
 подключённый источник GitHub по точным путям репозитория выше. Если я спрашиваю,
 что изменилось, дополнительно прочитай последние строки changes.jsonl. Не
 добавляй к ссылкам ?nocache или другие query-параметры. При единичной ошибке

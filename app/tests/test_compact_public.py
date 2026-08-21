@@ -47,3 +47,4 @@ def test_public_state_omits_duplicate_flat_item_list_and_writes_compact_json(tmp
     raw = (tmp_path / "current_state.json").read_text(encoding="utf-8")
     assert '\n  "' not in raw
     assert json.loads(raw)["summary"]["physicalItemsVisible"] == 1
+    assert (tmp_path / "chatgpt_state.json").is_file()
