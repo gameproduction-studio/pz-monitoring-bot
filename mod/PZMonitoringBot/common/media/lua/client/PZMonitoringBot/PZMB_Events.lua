@@ -1,6 +1,7 @@
 require "PZMonitoringBot/PZMB_Json"
 require "PZMonitoringBot/PZMB_Scanner"
 require "PZMonitoringBot/PZMB_Config"
+require "PZMonitoringBot/PZMB_Vehicles"
 require "PZMonitoringBot/PZMB_Export"
 require "PZMonitoringBot/PZMB_UI"
 
@@ -16,6 +17,8 @@ local function export(reason, refreshWorld)
     if refreshWorld then
         local scanned = PZMB.Scanner.scanBaseLoadedSquares()
         if scanned == 0 then PZMB.Scanner.refreshKnownContainers() end
+        PZMB.Scanner.refreshOwnedVehicles()
+        PZMB.Vehicles.save()
     end
     local ok = PZMB.Export.write(reason)
     if ok then
@@ -27,6 +30,7 @@ end
 local function onGameStart()
     PZMB.Config.load()
     PZMB.Config.applyCurrentSave()
+    PZMB.Vehicles.load()
     Runtime.dirty = true
 end
 

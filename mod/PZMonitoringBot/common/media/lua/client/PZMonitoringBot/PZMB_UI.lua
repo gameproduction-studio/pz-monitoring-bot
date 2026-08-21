@@ -1,6 +1,8 @@
 require "PZMonitoringBot/PZMB_Config"
+require "PZMonitoringBot/PZMB_Vehicles"
 require "PZMonitoringBot/PZMB_Export"
 require "ISUI/ISTextBox"
+require "Vehicles/ISUI/ISVehicleMenu"
 require "ISUI/ISModalDialog"
 
 PZMB = PZMB or {}
@@ -30,6 +32,132 @@ local function zoneLabel(zone)
     )
 end
 
+local function vehicleLabel(record)
+    return string.format(
+        "%s (%s; %d, %d, %d)",
+        tostring(record.name or record.displayName or tr("UI_PZMB_Vehicle")),
+        tostring(record.displayName or record.scriptName or "?"),
+        math.floor(tonumber(record.x) or 0),
+        math.floor(tonumber(record.y) or 0),
+        math.floor(tonumber(record.z) or 0)
+    )
+end
+
+local function vehicleUnderCursor(player)
+    if not player then return nil end
+    local current = player:getVehicle()
+    if current then return current end
+    if IsoObjectPicker and IsoObjectPicker.Instance then
+        local ok, vehicle = pcall(
+            IsoObjectPicker.Instance.PickVehicle,
+            IsoObjectPicker.Instance,
+            getMouseXScaled(), getMouseYScaled()
+        )
+        if ok then return vehicle end
+    end
+    return nil
+end
+
+function UI.claimVehicle(vehicle)
+    local ok, record, result = PZMB.Vehicles.register(vehicle)
+    if not ok then
+        if result == "missing_key" then
+            say(tr("UI_PZMB_MsgVehicleKeyRequired"))
+        else
+            say(tr("UI_PZMB_MsgVehicleSaveFailed"))
+        end
+        return
+    end
+    PZMB.Scanner.observeVehicle(vehicle, "vehicle_registered")
+    local exported, err = PZMB.Export.write("vehicle_registered")
+    if not exported then
+        say(tr("UI_PZMB_MsgSnapshotFailed", tostring(err)))
+        return
+    end
+    if result then
+        say(tr("UI_PZMB_MsgVehicleSaved", tostring(record.name)))
+    else
+        say(tr("UI_PZMB_MsgVehicleAlreadySaved", tostring(record.name)))
+    end
+end
+
+function UI.onRenameVehicleSubmitted(_, button, vehicleId)
+    if not button or button.internal ~= "OK" then return end
+    local modal = button.parent
+    local newName = modal and modal.entry and modal.entry:getText() or ""
+    if PZMB.Vehicles.rename(vehicleId, newName) then
+        say(tr("UI_PZMB_MsgVehicleRenamed", tostring(newName)))
+    else
+        say(tr("UI_PZMB_MsgRenameFailed"))
+    end
+end
+
+function UI.openRenameVehicleDialog(record)
+    if not record then return end
+    local modal = ISTextBox:new(
+        0, 0, 390, 150,
+        tr("UI_PZMB_RenameVehiclePrompt"),
+        tostring(record.name or ""),
+        UI, UI.onRenameVehicleSubmitted, 0, record.vehicleId
+    )
+    modal:initialise()
+    modal:addToUIManager()
+    modal.moveWithMouse = true
+end
+
+function UI.onDeleteVehicleConfirmed(_, button, vehicleId, vehicleName)
+    if not button or button.internal ~= "YES" then return end
+    if PZMB.Vehicles.remove(vehicleId) then
+        PZMB.Export.write("vehicle_removed")
+        say(tr("UI_PZMB_MsgVehicleDeleted", tostring(vehicleName)))
+    else
+        say(tr("UI_PZMB_MsgVehicleDeleteFailed"))
+    end
+end
+
+function UI.confirmDeleteVehicle(record)
+    if not record then return end
+    local modal = ISModalDialog:new(
+        0, 0, 420, 150,
+        tr("UI_PZMB_DeleteVehicleConfirm", tostring(record.name)),
+        true, UI, UI.onDeleteVehicleConfirmed, 0, record.vehicleId, record.name
+    )
+    modal:initialise()
+    modal:addToUIManager()
+    modal.moveWithMouse = true
+end
+
+function UI.updateVehicle(record)
+    if not record then return end
+    PZMB.Scanner.refreshOwnedVehicles()
+    local vehicle = PZMB.Scanner.vehicleRefs[tostring(record.vehicleId)]
+    if not vehicle then
+        say(tr("UI_PZMB_MsgVehicleNotLoaded", tostring(record.name)))
+        return
+    end
+    local snapshot = PZMB.Scanner.observeVehicle(vehicle, "manual_vehicle_scan")
+    if not snapshot then
+        say(tr("UI_PZMB_MsgVehicleUpdateFailed", tostring(record.name)))
+        return
+    end
+    PZMB.Vehicles.updatePosition(vehicle)
+    PZMB.Vehicles.save()
+    local ok, err = PZMB.Export.write("manual_vehicle_scan")
+    if ok then
+        say(tr("UI_PZMB_MsgVehicleUpdated", tostring(record.name)))
+    else
+        say(tr("UI_PZMB_MsgSnapshotFailed", tostring(err)))
+    end
+end
+
+local function addVehicleActions(parentMenu, record)
+    local option = parentMenu:addOption(vehicleLabel(record), record, nil)
+    local actions = ISContextMenu:getNew(parentMenu)
+    parentMenu:addSubMenu(option, actions)
+    actions:addOption(tr("UI_PZMB_RenameVehicle"), record, UI.openRenameVehicleDialog)
+    actions:addOption(tr("UI_PZMB_UpdateVehicle"), record, UI.updateVehicle)
+    actions:addOption(tr("UI_PZMB_DeleteVehicle"), record, UI.confirmDeleteVehicle)
+end
 local function currentBase()
     local player = getPlayer()
     if not player then return nil end
@@ -134,6 +262,8 @@ function UI.exportNow()
     PZMB.Scanner.observeSelectedContainer(false)
     local scanned = PZMB.Scanner.scanBaseLoadedSquares()
     if scanned == 0 then PZMB.Scanner.refreshKnownContainers() end
+    PZMB.Scanner.refreshOwnedVehicles()
+    PZMB.Vehicles.save()
     local ok, err = PZMB.Export.write("manual")
     if ok then
         say(tr("UI_PZMB_MsgRecordsUpdated"))
@@ -154,6 +284,8 @@ end
 function UI.onWorldContextMenu(playerNum, context, worldObjects)
     if playerNum ~= 0 then return end
 
+    local player = getSpecificPlayer(playerNum)
+    local targetVehicle = vehicleUnderCursor(player)
     local root = context:addOption(tr("UI_PZMB_Organizer"), worldObjects, nil)
     local menu = ISContextMenu:getNew(context)
     context:addSubMenu(root, menu)
@@ -173,7 +305,28 @@ function UI.onWorldContextMenu(playerNum, context, worldObjects)
         )
     end
 
+
+    if targetVehicle then
+        local vehicleId = PZMB.Vehicles.vehicleId(targetVehicle)
+        local record = PZMB.Vehicles.findById(vehicleId)
+        if record then
+            local currentVehicle = menu:addOption(
+                tr("UI_PZMB_CurrentVehicle", tostring(record.name)), record, nil
+            )
+            local currentVehicleMenu = ISContextMenu:getNew(menu)
+            menu:addSubMenu(currentVehicle, currentVehicleMenu)
+            currentVehicleMenu:addOption(tr("UI_PZMB_RenameVehicle"), record, UI.openRenameVehicleDialog)
+            currentVehicleMenu:addOption(tr("UI_PZMB_UpdateVehicle"), record, UI.updateVehicle)
+            currentVehicleMenu:addOption(tr("UI_PZMB_DeleteVehicle"), record, UI.confirmDeleteVehicle)
+        elseif PZMB.Vehicles.playerHasKey(targetVehicle, player) then
+            menu:addOption(tr("UI_PZMB_ClaimVehicle"), targetVehicle, UI.claimVehicle)
+        else
+            local noKey = menu:addOption(tr("UI_PZMB_ClaimVehicleNoKey"), targetVehicle, nil)
+            noKey.notAvailable = true
+        end
+    end
     local zones = PZMB.Config.currentZones()
+
     local basesRoot = menu:addOption(tr("UI_PZMB_MyBases", tostring(#zones)), zones, nil)
     local basesMenu = ISContextMenu:getNew(menu)
     menu:addSubMenu(basesRoot, basesMenu)
@@ -184,7 +337,21 @@ function UI.onWorldContextMenu(playerNum, context, worldObjects)
         for _, zone in ipairs(zones) do addBaseActions(basesMenu, zone) end
     end
 
+
+    local vehicleRecords = PZMB.Vehicles.currentRecords()
+    local vehiclesRoot = menu:addOption(
+        tr("UI_PZMB_MyVehicles", tostring(#vehicleRecords)), vehicleRecords, nil
+    )
+    local vehiclesMenu = ISContextMenu:getNew(menu)
+    menu:addSubMenu(vehiclesRoot, vehiclesMenu)
+    if #vehicleRecords == 0 then
+        local emptyVehicles = vehiclesMenu:addOption(tr("UI_PZMB_NoVehicles"), vehicleRecords, nil)
+        emptyVehicles.notAvailable = true
+    else
+        for _, record in ipairs(vehicleRecords) do addVehicleActions(vehiclesMenu, record) end
+    end
     menu:addOption(tr("UI_PZMB_RememberContainer"), worldObjects, UI.rememberOpenContainer)
+
     menu:addOption(tr("UI_PZMB_UpdateAll"), worldObjects, UI.exportNow)
 end
 

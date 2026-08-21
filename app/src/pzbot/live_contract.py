@@ -14,7 +14,7 @@ from .jsonio import atomic_write_json
 from .state_diff import flatten_state
 
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 BUILD_COMPATIBILITY = ["42.20.2", "42.20.3"]
 
 
@@ -85,9 +85,15 @@ def build_current_state(
     ]
     world = snapshot.get("world") or {}
     containers = world.get("containers") or []
+    vehicle_containers = [
+        container
+        for vehicle in world.get("vehicles") or []
+        for container in vehicle.get("containers") or []
+    ]
+    all_containers = list(containers) + vehicle_containers
     owned_containers = [
         container
-        for container in containers
+        for container in all_containers
         if (container.get("ownership") or {}).get("owned")
     ]
 
@@ -108,7 +114,7 @@ def build_current_state(
         },
         "save": copy.deepcopy(snapshot["save"]),
         "ownership": {
-            "policy": "opened_or_inside_base_zone",
+            "policy": "opened_or_inside_base_zone_or_registered_vehicle",
             "baseZones": copy.deepcopy(snapshot.get("baseZones") or []),
             "openedInferenceWarning": (
                 "explored usually means opened in Build 42, but some game systems "
@@ -120,9 +126,9 @@ def build_current_state(
             "characterItems": len(character_items),
             "ownedItems": len(owned_items),
             "worldObservedItems": len(items) - len(character_items),
-            "containersVisible": len(containers),
+            "containersVisible": len(all_containers),
             "ownedContainers": len(owned_containers),
-            "observedContainers": len(containers) - len(owned_containers),
+            "observedContainers": len(all_containers) - len(owned_containers),
             "corpsesVisible": len(world.get("corpses") or []),
             "groundItemsVisible": len(world.get("groundItems") or []),
             "vehiclesVisible": len(world.get("vehicles") or []),
@@ -132,7 +138,11 @@ def build_current_state(
         "ownedCountsByFullType": dict(sorted(owned_counts.items())),
         "character": character,
         "world": current_world,
-        "items": items,
+        "itemList": {
+            "omittedFromPublicSnapshot": True,
+            "reason": "duplicate_of_world_and_assistant_search_index",
+            "count": len(items),
+        },
         "recentChanges": events[-200:],
     }
 
@@ -207,7 +217,10 @@ def write_live_files(
     events: list[dict[str, Any]],
 ) -> None:
     live_dir.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(live_dir / "current_state.json", current_state)
+    # current_state can contain more than a thousand rich item records. Compact
+    # encoding plus omission of the duplicate flat list keeps it below the
+    # ordinary ChatGPT source-size limit without discarding world facts.
+    atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
     append_changes(live_dir / "changes.jsonl", events)
     atomic_write_json(live_dir / "status.json", status)
 

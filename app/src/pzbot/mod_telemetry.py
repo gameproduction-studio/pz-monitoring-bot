@@ -167,29 +167,89 @@ def _without_known_items(items: list[dict[str, Any]], known: set[str]) -> list[d
     return result
 
 
+def _normalized_vehicle(vehicle: dict[str, Any], world_age_hours: Any) -> dict[str, Any]:
+    result = copy.deepcopy(vehicle)
+    result["vehicleId"] = str(vehicle.get("vehicleId"))
+    result["containers"] = [
+        _normalized_container(container, world_age_hours)
+        for container in vehicle.get("containers") or []
+    ]
+    result["containers"].sort(key=lambda value: str(value.get("containerId")))
+    result["parts"] = sorted(
+        copy.deepcopy(vehicle.get("parts") or []),
+        key=lambda value: str(value.get("partId")),
+    )
+    observation = result.get("observation")
+    last_seen = result.pop("lastSeenWorldAgeHours", None)
+    stale = isinstance(last_seen, (int, float)) and isinstance(
+        world_age_hours, (int, float)
+    ) and float(last_seen) < float(world_age_hours) - 1e-6
+    result["observation"] = {
+        "method": observation if isinstance(observation, str) else "runtime",
+        "lastSeenWorldAgeHours": last_seen,
+        "stale": stale,
+    }
+    fuel = result.get("fuel") or {}
+    fraction = fuel.get("fraction")
+    if fraction is None and fuel.get("capacity"):
+        fraction = float(fuel.get("amount") or 0) / float(fuel["capacity"])
+    if fraction is not None:
+        fuel["fraction"] = round(float(fraction), 6)
+        fuel["percent"] = round(float(fraction) * 100.0, 2)
+    result["fuel"] = fuel
+    return result
+
+
+def _stale_observation(value: Any) -> dict[str, Any]:
+    observation = copy.deepcopy(value) if isinstance(value, dict) else {
+        "method": str(value or "previous_snapshot")
+    }
+    observation["stale"] = True
+    observation["carriedForward"] = True
+    return observation
+
+
 def normalize_mod_snapshot(
     raw: dict[str, Any],
     *,
     previous: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    world_age_hours = (raw.get("game") or {}).get("worldAgeHours")
     """Convert runtime telemetry to the internal instance-level snapshot contract."""
+    world_age_hours = (raw.get("game") or {}).get("worldAgeHours")
     character = copy.deepcopy(raw.get("character") or {})
     inventory = character.setdefault("inventory", {})
     inventory["items"] = [
         _normalized_item(item) for item in inventory.get("items") or []
     ]
+    raw_world = raw.get("world") or {}
     current_containers = [
         _normalized_container(container, world_age_hours)
-        for container in (raw.get("world") or {}).get("containers") or []
+        for container in raw_world.get("containers") or []
     ]
+    current_vehicles = [
+        _normalized_vehicle(vehicle, world_age_hours)
+        for vehicle in raw_world.get("vehicles") or []
+    ]
+    registered_vehicles = copy.deepcopy(raw.get("ownedVehicles") or [])
+    registered_ids = {
+        str(record.get("vehicleId")) for record in registered_vehicles
+        if record.get("vehicleId") is not None
+    }
 
     known_now = _item_ids(inventory["items"])
     for container in current_containers:
         known_now.update(_item_ids(container.get("items") or []))
+    for vehicle in current_vehicles:
+        for container in vehicle.get("containers") or []:
+            known_now.update(_item_ids(container.get("items") or []))
 
-    current_ids = {str(container.get("containerId")) for container in current_containers}
-    if previous and (previous.get("save") or {}).get("id") == (raw.get("save") or {}).get("id"):
+    same_save = previous and (previous.get("save") or {}).get("id") == (
+        raw.get("save") or {}
+    ).get("id")
+    current_container_ids = {
+        str(container.get("containerId")) for container in current_containers
+    }
+    if same_save:
         previous_by_id = {
             str(container.get("containerId")): container
             for container in (previous.get("world") or {}).get("containers") or []
@@ -198,24 +258,56 @@ def normalize_mod_snapshot(
             old = previous_by_id.get(str(current.get("containerId")))
             old_ownership = (old or {}).get("ownership") or {}
             current_ownership = current.get("ownership") or {}
-            if old_ownership.get("owned") and str(old_ownership.get("reason", "")).startswith("opened") and not current_ownership.get("owned"):
+            if (
+                old_ownership.get("owned")
+                and str(old_ownership.get("reason", "")).startswith("opened")
+                and not current_ownership.get("owned")
+            ):
                 current["ownership"] = copy.deepcopy(old_ownership)
                 current["ownership"]["reason"] = "opened_previous_session"
                 current["ownership"]["confidence"] = "exact_persisted_locally"
         for old in (previous.get("world") or {}).get("containers") or []:
-            if str(old.get("containerId")) in current_ids:
+            if str(old.get("containerId")) in current_container_ids:
                 continue
             stale = copy.deepcopy(old)
             stale["items"] = _without_known_items(stale.get("items") or [], known_now)
-            stale_observation = stale.get("observation")
-            if not isinstance(stale_observation, dict):
-                stale_observation = {"method": str(stale_observation or "previous_snapshot")}
-            stale_observation["stale"] = True
-            stale_observation["carriedForward"] = True
-            stale["observation"] = stale_observation
+            stale["observation"] = _stale_observation(stale.get("observation"))
             current_containers.append(stale)
 
+        current_vehicle_ids = {
+            str(vehicle.get("vehicleId")) for vehicle in current_vehicles
+        }
+        for old in (previous.get("world") or {}).get("vehicles") or []:
+            old_id = str(old.get("vehicleId"))
+            if old_id in current_vehicle_ids or old_id not in registered_ids:
+                continue
+            stale_vehicle = copy.deepcopy(old)
+            stale_vehicle["observation"] = _stale_observation(
+                stale_vehicle.get("observation")
+            )
+            for container in stale_vehicle.get("containers") or []:
+                container["items"] = _without_known_items(
+                    container.get("items") or [], known_now
+                )
+                container["observation"] = _stale_observation(
+                    container.get("observation")
+                )
+            current_vehicles.append(stale_vehicle)
+
     current_containers.sort(key=lambda value: str(value.get("containerId")))
+    current_vehicles.sort(key=lambda value: str(value.get("vehicleId")))
+    stale_vehicle_count = sum(
+        1
+        for vehicle in current_vehicles
+        if (vehicle.get("observation") or {}).get("stale")
+    )
+    coverage = copy.deepcopy(raw_world.get("coverage") or {})
+    coverage["vehicles"] = {
+        "registered": len(registered_ids),
+        "loadedThisSnapshot": len(current_vehicles) - stale_vehicle_count,
+        "lastKnownStale": stale_vehicle_count,
+        "unloadedVehiclesCarriedForward": True,
+    }
     game = copy.deepcopy(raw.get("game") or {})
     return {
         "schema": "pz-monitoring-bot/internal-snapshot/v2",
@@ -226,13 +318,16 @@ def normalize_mod_snapshot(
         "world": {
             "containers": current_containers,
             "groundItems": [],
-            "vehicles": [],
+            "vehicles": current_vehicles,
             "corpses": [
-                container for container in current_containers if container.get("kind") == "corpse"
+                container
+                for container in current_containers
+                if container.get("kind") == "corpse"
             ],
-            "coverage": copy.deepcopy((raw.get("world") or {}).get("coverage") or {}),
+            "coverage": coverage,
         },
         "baseZones": copy.deepcopy(raw.get("baseZones") or []),
+        "ownedVehicles": registered_vehicles,
         "runtimeExport": copy.deepcopy(raw.get("export") or {}),
         "source": copy.deepcopy(raw.get("source") or {}),
     }

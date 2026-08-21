@@ -33,15 +33,18 @@ local function counts(state)
     for _, container in ipairs(state.world.containers or {}) do
         walk(container.items)
     end
-    return itemCount, #(state.world.containers or {})
+    for _, vehicle in ipairs(state.world.vehicles or {}) do
+        for _, container in ipairs(vehicle.containers or {}) do walk(container.items) end
+    end
+    return itemCount, #(state.world.containers or {}), #(state.world.vehicles or {})
 end
 
 function Export.status(ok, reason, state, err)
-    local itemCount, containerCount = 0, 0
-    if state then itemCount, containerCount = counts(state) end
+    local itemCount, containerCount, vehicleCount = 0, 0, 0
+    if state then itemCount, containerCount, vehicleCount = counts(state) end
     return {
         schema = "pz-monitoring-bot/mod-status/v1",
-        schemaVersion = "0.3.0",
+        schemaVersion = "0.4.0",
         ok = ok,
         parsingSuccessful = ok,
         sequence = Export.sequence,
@@ -53,6 +56,7 @@ function Export.status(ok, reason, state, err)
         counts = {
             itemInstances = itemCount,
             containers = containerCount,
+            vehicles = vehicleCount,
         },
         readOnlyGameState = true,
     }

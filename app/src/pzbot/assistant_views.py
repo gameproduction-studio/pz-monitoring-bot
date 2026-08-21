@@ -136,6 +136,90 @@ def _food_record(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
+    observation = vehicle.get("observation") or {}
+    stale = bool(observation.get("stale"))
+    fuel = vehicle.get("fuel") or {}
+    fraction = fuel.get("fraction")
+    fuel_percent = round(float(fraction) * 100.0, 1) if fraction is not None else None
+    alerts: list[dict[str, Any]] = []
+    if not stale and fuel_percent is not None and fuel_percent <= 25:
+        alerts.append(
+            {
+                "kind": "vehicle_low_fuel",
+                "severity": "critical" if fuel_percent <= 10 else "warning",
+                "fuelPercent": fuel_percent,
+                "message_ru": (
+                    f"В автомобиле «{vehicle.get('name')}» осталось {fuel_percent:g}% топлива. "
+                    "Заправь его перед дальней дорогой."
+                ),
+            }
+        )
+    battery = vehicle.get("batteryCharge")
+    if not stale and isinstance(battery, (int, float)) and float(battery) <= 0.25:
+        alerts.append(
+            {
+                "kind": "vehicle_low_battery",
+                "severity": "warning",
+                "chargePercent": round(float(battery) * 100.0, 1),
+                "message_ru": f"У автомобиля «{vehicle.get('name')}» низкий заряд аккумулятора.",
+            }
+        )
+    weak_parts = []
+    for part in vehicle.get("parts") or []:
+        condition = part.get("condition")
+        if not stale and isinstance(condition, (int, float)) and float(condition) < 40:
+            weak_parts.append(
+                {
+                    "partId": part.get("partId"),
+                    "name_ru": part.get("nameLocalized"),
+                    "conditionPercent": condition,
+                    "installed": part.get("installed"),
+                }
+            )
+    if weak_parts:
+        alerts.append(
+            {
+                "kind": "vehicle_weak_parts",
+                "severity": "critical" if any(float(p["conditionPercent"]) < 20 for p in weak_parts) else "warning",
+                "parts": weak_parts,
+                "message_ru": f"Автомобиль «{vehicle.get('name')}» имеет детали в плохом состоянии.",
+            }
+        )
+    cargo = []
+    for container in vehicle.get("containers") or []:
+        cargo.append(
+            {
+                "containerId": container.get("containerId"),
+                "name_ru": container.get("displayName"),
+                "capacity": container.get("capacity"),
+                "itemInstances": len(container.get("items") or []),
+                "stale": bool((container.get("observation") or {}).get("stale")),
+            }
+        )
+    return {
+        "vehicleId": vehicle.get("vehicleId"),
+        "keyId": vehicle.get("keyId"),
+        "name": vehicle.get("name"),
+        "displayName": vehicle.get("displayName"),
+        "scriptFullType": vehicle.get("scriptFullType"),
+        "position": vehicle.get("position"),
+        "stale": stale,
+        "lastSeenWorldAgeHours": observation.get("lastSeenWorldAgeHours"),
+        "fuel": {
+            "amount": fuel.get("amount"),
+            "capacity": fuel.get("capacity"),
+            "percent": fuel_percent,
+        },
+        "batteryChargePercent": round(float(battery) * 100.0, 1)
+        if isinstance(battery, (int, float)) else None,
+        "overallConditionPercent": vehicle.get("overallCondition"),
+        "engine": vehicle.get("engine") or {},
+        "parts": vehicle.get("parts") or [],
+        "cargoContainers": cargo,
+        "alerts": alerts,
+    }
+
 def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
     instances = list(flatten_state(snapshot).values())
     owned = [
@@ -180,6 +264,14 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    vehicle_records = [
+        _vehicle_record(vehicle)
+        for vehicle in (snapshot.get("world") or {}).get("vehicles") or []
+    ]
+    vehicle_alerts = [
+        alert for vehicle in vehicle_records for alert in vehicle.get("alerts") or []
+    ]
+
     cooking_candidates = [
         food
         for food in foods
@@ -193,7 +285,10 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
                 "All item values originate from the running game. Russian names are "
                 "the installed game's active localization, not model translations."
             ),
-            "ownedRule": "character inventory or container opened by player or inside base",
+            "ownedRule": (
+                "character inventory, container opened by player, container inside base, "
+                "or cargo of a registered vehicle"
+            ),
             "staleRule": (
                 "stale=true means last known contents; do not claim they are still present "
                 "without qualification."
@@ -218,6 +313,11 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
             "highCalorieOwned": foods[:10],
             "cookingCandidates": cooking_candidates,
             "spoilageAlerts": build_spoilage_alerts(owned),
+        },
+        "vehicles": {
+            "owned": vehicle_records,
+            "alerts": vehicle_alerts,
+            "staleRule": "A stale vehicle is last known state; do not present alerts as current.",
         },
         "search": {
             "coverageWarning": (

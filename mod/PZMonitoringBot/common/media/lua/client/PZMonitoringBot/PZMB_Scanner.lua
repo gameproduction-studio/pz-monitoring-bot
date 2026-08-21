@@ -10,6 +10,10 @@ Scanner.openedContainerIds = Scanner.openedContainerIds or {}
 Scanner.baseZones = Scanner.baseZones or {}
 Scanner.lastSelectedContainerId = Scanner.lastSelectedContainerId or nil
 Scanner.baseIndexesBuilt = Scanner.baseIndexesBuilt or {}
+Scanner.ownedVehicles = Scanner.ownedVehicles or {}
+Scanner.ownedVehicleById = Scanner.ownedVehicleById or {}
+Scanner.knownVehicles = Scanner.knownVehicles or {}
+Scanner.vehicleRefs = Scanner.vehicleRefs or {}
 
 local function safeCall(object, methodName, defaultValue, ...)
     if not object then return defaultValue end
@@ -321,6 +325,12 @@ local function containingBase(position)
     return nil
 end
 
+local function ownedVehicleRecord(vehicle)
+    if not vehicle then return nil end
+    local id = tostring(safeCall(vehicle, "getId", ""))
+    return Scanner.ownedVehicleById[id]
+end
+
 function Scanner.containerSnapshot(container, observation)
     if not container then return nil end
     local id = containerIdentity(container)
@@ -335,6 +345,9 @@ function Scanner.containerSnapshot(container, observation)
     local ownedByOpened = Scanner.openedContainerIds[id] == true
     local owningBase = containingBase(position)
     local ownedByBase = owningBase ~= nil
+    local vehicle = safeCall(container, "getVehicle", nil)
+    local vehicleRecord = ownedVehicleRecord(vehicle)
+    local ownedByVehicle = vehicleRecord ~= nil
     local storage = {
         containerId = id,
         containerName = customName or localizedType,
@@ -343,6 +356,8 @@ function Scanner.containerSnapshot(container, observation)
         freezer = safeCall(container, "isFreezer", false),
         baseZoneId = owningBase and owningBase.id or nil,
         baseZoneName = owningBase and owningBase.name or nil,
+        vehicleId = vehicleRecord and vehicleRecord.vehicleId or nil,
+        vehicleName = vehicleRecord and vehicleRecord.name or nil,
     }
     local player = getPlayer()
     local equipment = player and equipmentMap(player) or {}
@@ -359,11 +374,15 @@ function Scanner.containerSnapshot(container, observation)
         hasBeenLooted = safeCall(container, "isHasBeenLooted", false),
         refrigerator = storage.refrigerator,
         freezer = storage.freezer,
+        vehicleId = storage.vehicleId,
+        vehicleName = storage.vehicleName,
         ownership = {
-            owned = ownedByOpened or ownedByBase,
-            reason = ownedByBase and "inside_base" or (ownedByOpened and "opened_by_player" or "observed_only"),
+            owned = ownedByOpened or ownedByBase or ownedByVehicle,
+            reason = ownedByVehicle and "registered_vehicle" or (ownedByBase and "inside_base" or (ownedByOpened and "opened_by_player" or "observed_only")),
             baseZoneId = owningBase and owningBase.id or nil,
             baseZoneName = owningBase and owningBase.name or nil,
+            vehicleId = vehicleRecord and vehicleRecord.vehicleId or nil,
+            vehicleName = vehicleRecord and vehicleRecord.name or nil,
         },
         observation = observation or "nearby",
         lastSeenWorldAgeHours = getGameTime():getWorldAgeHours(),
@@ -430,6 +449,14 @@ end
 function Scanner.setBaseZones(zones)
     Scanner.baseZones = zones or {}
     Scanner.baseIndexesBuilt = {}
+end
+
+function Scanner.setOwnedVehicles(records)
+    Scanner.ownedVehicles = records or {}
+    Scanner.ownedVehicleById = {}
+    for _, record in ipairs(Scanner.ownedVehicles) do
+        Scanner.ownedVehicleById[tostring(record.vehicleId)] = record
+    end
 end
 
 function Scanner.isPlayerNearBase(base, padding)
@@ -505,7 +532,159 @@ function Scanner.scanBaseLoadedSquares(zoneId)
     return scanned
 end
 
+local function localizedVehicleName(vehicle)
+    local script = safeCall(vehicle, "getScript", nil)
+    local scriptName = tostring(safeCall(script, "getName", "unknown"))
+    local modelName = tostring(safeCall(script, "getCarModelName", scriptName))
+    return getTextOrNull("IGUI_VehicleName" .. modelName)
+        or getTextOrNull("IGUI_VehicleName" .. scriptName)
+        or modelName
+end
+
+local function vehiclePartSnapshot(part)
+    local partId = tostring(safeCall(part, "getId", "unknown"))
+    local category = tostring(safeCall(part, "getCategory", "Other"))
+    local item = safeCall(part, "getInventoryItem", nil)
+    local itemTypes = safeCall(part, "getItemType", nil)
+    local requiresInstalledItem = itemTypes ~= nil and not safeCall(itemTypes, "isEmpty", true)
+    local amount = safeCall(part, "getContainerContentAmount", 0)
+    local capacity = safeCall(part, "getContainerCapacity", 0)
+    local content = nil
+    if partId == "GasTank" or amount ~= 0 or capacity ~= 0 then
+        content = {
+            amount = amount,
+            capacity = capacity,
+            fraction = capacity > 0 and amount / capacity or nil,
+            contentType = toStringOrNil(safeCall(part, "getContainerContentType", nil)),
+        }
+    end
+    local installedItem = nil
+    if item then
+        installedItem = {
+            itemId = tostring(safeCall(item, "getID", item)),
+            fullType = tostring(safeCall(item, "getFullType", "unknown")),
+            nameLocalized = tostring(safeCall(item, "getDisplayName", safeCall(item, "getName", "unknown"))),
+            condition = safeCall(item, "getCondition", nil),
+            conditionMax = safeCall(item, "getConditionMax", nil),
+            remainingFraction = safeCall(item, "getCurrentUsesFloat", nil),
+        }
+    end
+    return {
+        partId = partId,
+        nameLocalized = getTextOrNull("IGUI_VehiclePart" .. partId) or partId,
+        category = category,
+        categoryLocalized = getTextOrNull("IGUI_VehiclePartCat" .. category) or category,
+        condition = safeCall(part, "getCondition", 0),
+        requiresInstalledItem = requiresInstalledItem,
+        installed = (not requiresInstalledItem) or item ~= nil,
+        installedItem = installedItem,
+        content = content,
+    }
+end
+
+function Scanner.vehicleSnapshot(vehicle, observation)
+    local record = ownedVehicleRecord(vehicle)
+    if not record then return nil end
+    local id = tostring(safeCall(vehicle, "getId", record.vehicleId))
+    local script = safeCall(vehicle, "getScript", nil)
+    local parts = {}
+    local containers = {}
+    local conditionTotal = 0
+    local conditionCount = 0
+    local partCount = safeCall(vehicle, "getPartCount", 0)
+    for index = 0, partCount - 1 do
+        local part = safeCall(vehicle, "getPartByIndex", nil, index)
+        if part then
+            local category = tostring(safeCall(part, "getCategory", "Other"))
+            if category ~= "nodisplay" then
+                local partSnapshot = vehiclePartSnapshot(part)
+                parts[#parts + 1] = partSnapshot
+                conditionTotal = conditionTotal + (tonumber(partSnapshot.condition) or 0)
+                conditionCount = conditionCount + 1
+            end
+            local container = safeCall(part, "getItemContainer", nil)
+            if container then
+                local snapshot = Scanner.containerSnapshot(container, observation or "registered_vehicle")
+                if snapshot then containers[#containers + 1] = snapshot end
+            end
+        end
+    end
+    table.sort(parts, function(left, right) return tostring(left.partId) < tostring(right.partId) end)
+    table.sort(containers, function(left, right)
+        return tostring(left.containerId) < tostring(right.containerId)
+    end)
+
+    local gasTank = safeCall(vehicle, "getPartById", nil, "GasTank")
+    local fuelAmount = safeCall(gasTank, "getContainerContentAmount", 0)
+    local fuelCapacity = safeCall(gasTank, "getContainerCapacity", 0)
+    local position = {
+        x = safeCall(vehicle, "getX", record.x or 0),
+        y = safeCall(vehicle, "getY", record.y or 0),
+        z = safeCall(vehicle, "getZ", record.z or 0),
+    }
+    record.x, record.y, record.z = position.x, position.y, position.z
+    return {
+        vehicleId = id,
+        keyId = safeCall(vehicle, "getKeyId", record.keyId),
+        name = record.name,
+        displayName = localizedVehicleName(vehicle),
+        scriptFullType = tostring(safeCall(script, "getFullType", record.scriptFullType or "unknown")),
+        scriptName = tostring(safeCall(script, "getName", record.scriptName or "unknown")),
+        position = position,
+        ownership = {
+            owned = true,
+            reason = "registered_with_matching_key",
+            confidence = "exact",
+        },
+        observation = observation or "registered_vehicle",
+        lastSeenWorldAgeHours = getGameTime():getWorldAgeHours(),
+        fuel = {
+            amount = fuelAmount,
+            capacity = fuelCapacity,
+            fraction = fuelCapacity > 0 and fuelAmount / fuelCapacity or nil,
+        },
+        batteryCharge = safeCall(vehicle, "getBatteryCharge", nil),
+        overallCondition = conditionCount > 0 and conditionTotal / conditionCount or nil,
+        engine = {
+            quality = safeCall(vehicle, "getEngineQuality", nil),
+            power = safeCall(vehicle, "getEnginePower", nil),
+            loudness = safeCall(vehicle, "getEngineLoudness", nil),
+            running = safeCall(vehicle, "isEngineRunning", false),
+            working = safeCall(vehicle, "isEngineWorking", false),
+        },
+        hotwired = safeCall(vehicle, "isHotwired", false),
+        keyInIgnition = safeCall(vehicle, "isKeysInIgnition", false),
+        mass = safeCall(vehicle, "getMass", nil),
+        parts = parts,
+        containers = containers,
+    }
+end
+
+function Scanner.observeVehicle(vehicle, observation)
+    local snapshot = Scanner.vehicleSnapshot(vehicle, observation)
+    if not snapshot then return nil end
+    Scanner.knownVehicles[tostring(snapshot.vehicleId)] = snapshot
+    Scanner.vehicleRefs[tostring(snapshot.vehicleId)] = vehicle
+    return snapshot
+end
+
+function Scanner.refreshOwnedVehicles()
+    local cell = getCell()
+    if not cell then return 0 end
+    local vehicles = safeCall(cell, "getVehicles", nil)
+    local count = safeCall(vehicles, "size", 0)
+    local refreshed = 0
+    for index = 0, count - 1 do
+        local vehicle = safeCall(vehicles, "get", nil, index)
+        if vehicle and ownedVehicleRecord(vehicle) then
+            local ok, snapshot = pcall(Scanner.observeVehicle, vehicle, "registered_vehicle_refresh")
+            if ok and snapshot then refreshed = refreshed + 1 end
+        end
+    end
+    return refreshed
+end
 local function characterSnapshot(player)
+
     local descriptor = safeCall(player, "getDescriptor", nil)
     local firstName = safeCall(descriptor, "getForename", "")
     local lastName = safeCall(descriptor, "getSurname", "")
@@ -541,10 +720,19 @@ function Scanner.currentState()
     if not player then error("no active player") end
     local containers = {}
     for _, container in pairs(Scanner.knownContainers) do
-        containers[#containers + 1] = container
+        local registeredVehicleContainer = container.kind == "vehicle"
+            and Scanner.ownedVehicleById[tostring(container.vehicleId or "")] ~= nil
+        if not registeredVehicleContainer then containers[#containers + 1] = container end
+    end
+    local vehicles = {}
+    for id, vehicle in pairs(Scanner.knownVehicles) do
+        if Scanner.ownedVehicleById[tostring(id)] then vehicles[#vehicles + 1] = vehicle end
     end
     table.sort(containers, function(left, right)
         return tostring(left.containerId) < tostring(right.containerId)
+    end)
+    table.sort(vehicles, function(left, right)
+        return tostring(left.vehicleId) < tostring(right.vehicleId)
     end)
 
     local world = getWorld()
@@ -561,7 +749,7 @@ function Scanner.currentState()
 
     return {
         schema = "pz-monitoring-bot/mod-snapshot/v1",
-        schemaVersion = "0.3.0",
+        schemaVersion = "0.4.0",
         source = { kind = "in_game_mod", readOnly = true },
         game = {
             build = toStringOrNil(safeCall(getCore(), "getVersionNumber", nil)),
@@ -574,10 +762,14 @@ function Scanner.currentState()
         },
         character = characterSnapshot(player),
         baseZones = baseZones,
+        ownedVehicles = Scanner.ownedVehicles,
         world = {
             containers = containers,
+            vehicles = vehicles,
             coverage = {
                 runtimeLoadedOnly = true,
+                registeredVehiclesConfigured = #Scanner.ownedVehicles,
+                registeredVehiclesLoaded = #vehicles,
                 openedContainersRememberedThisSession = true,
                 baseLoadedSquaresScanned = baseLoadedSquaresScanned,
                 configuredBaseCount = #Scanner.baseZones,

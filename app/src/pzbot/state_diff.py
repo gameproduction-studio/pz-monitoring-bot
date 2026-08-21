@@ -152,6 +152,10 @@ def flatten_state(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
                     "vehicleId": vehicle.get("vehicleId"),
                     "containerId": container.get("containerId"),
                     "containerType": container.get("containerType"),
+                    "containerDisplayName": (
+                        container.get("displayName") or vehicle.get("name")
+                    ),
+                    "vehicleName": vehicle.get("name"),
                     "position": vehicle.get("position"),
                     "owned": bool(ownership.get("owned")),
                     "ownershipConfidence": ownership.get("confidence", "none"),
@@ -303,5 +307,87 @@ def compare_states(
             if delta < 0
             else "source_uncertain"
         )
+
+    before_vehicles = {
+        str(vehicle.get("vehicleId")): vehicle
+        for vehicle in ((old_snapshot or {}).get("world") or {}).get("vehicles") or []
+    }
+    after_vehicles = {
+        str(vehicle.get("vehicleId")): vehicle
+        for vehicle in (new_snapshot.get("world") or {}).get("vehicles") or []
+    }
+
+    def emit_vehicle(kind: str, vehicle: dict[str, Any], **extra: Any) -> None:
+        events.append(
+            {
+                "time": timestamp,
+                "kind": kind,
+                "saveId": new_save,
+                "vehicleId": str(vehicle.get("vehicleId")),
+                "vehicleName": vehicle.get("name"),
+                "scriptFullType": vehicle.get("scriptFullType"),
+                **extra,
+            }
+        )
+
+    for vehicle_id in sorted(after_vehicles.keys() - before_vehicles.keys()):
+        emit_vehicle("vehicle_claimed", after_vehicles[vehicle_id])
+    for vehicle_id in sorted(before_vehicles.keys() - after_vehicles.keys()):
+        emit_vehicle("vehicle_removed", before_vehicles[vehicle_id])
+
+    for vehicle_id in sorted(before_vehicles.keys() & after_vehicles.keys()):
+        old_vehicle = before_vehicles[vehicle_id]
+        new_vehicle = after_vehicles[vehicle_id]
+        old_fuel = (old_vehicle.get("fuel") or {}).get("fraction")
+        new_fuel = (new_vehicle.get("fuel") or {}).get("fraction")
+        if _changed(old_fuel, new_fuel):
+            emit_vehicle(
+                "vehicle_fuel_change",
+                new_vehicle,
+                oldFraction=old_fuel,
+                newFraction=new_fuel,
+                oldPercent=round(float(old_fuel) * 100, 2) if old_fuel is not None else None,
+                newPercent=round(float(new_fuel) * 100, 2) if new_fuel is not None else None,
+            )
+        if _changed(old_vehicle.get("batteryCharge"), new_vehicle.get("batteryCharge")):
+            emit_vehicle(
+                "vehicle_battery_change",
+                new_vehicle,
+                old=old_vehicle.get("batteryCharge"),
+                new=new_vehicle.get("batteryCharge"),
+            )
+        if _changed(old_vehicle.get("overallCondition"), new_vehicle.get("overallCondition")):
+            emit_vehicle(
+                "vehicle_condition_change",
+                new_vehicle,
+                old=old_vehicle.get("overallCondition"),
+                new=new_vehicle.get("overallCondition"),
+            )
+        if old_vehicle.get("position") != new_vehicle.get("position"):
+            emit_vehicle(
+                "vehicle_moved",
+                new_vehicle,
+                oldPosition=old_vehicle.get("position"),
+                newPosition=new_vehicle.get("position"),
+            )
+
+        old_parts = {
+            str(part.get("partId")): part for part in old_vehicle.get("parts") or []
+        }
+        new_parts = {
+            str(part.get("partId")): part for part in new_vehicle.get("parts") or []
+        }
+        for part_id in sorted(old_parts.keys() & new_parts.keys()):
+            old_condition = old_parts[part_id].get("condition")
+            new_condition = new_parts[part_id].get("condition")
+            if _changed(old_condition, new_condition):
+                emit_vehicle(
+                    "vehicle_part_condition_change",
+                    new_vehicle,
+                    partId=part_id,
+                    partName=new_parts[part_id].get("nameLocalized"),
+                    old=old_condition,
+                    new=new_condition,
+                )
     return events
 

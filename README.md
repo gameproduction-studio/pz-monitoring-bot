@@ -15,10 +15,12 @@ before each gameplay answer.
 - character inventory, hands, worn and attached items;
 - nested portable containers;
 - opened world containers, corpses, and loaded containers inside the base zone;
+- per-save registration of keyed vehicles with rename/update/remove actions;
+- vehicle fuel, battery, engine, overall/part condition, position and cargo;
 - itemId, FullType, condition, uses, food state, and weapon ammunition;
 - incoming, outgoing, movement, condition, food, and ammunition events;
 - human container names, coordinates, ownership, and stale-data markers;
-- food/calorie/spoilage views for ChatGPT;
+- food/calorie/spoilage views and low-fuel/weak-part vehicle alerts for ChatGPT;
 - nearest-known-item search with bag capacity, distance, and direction;
 - durable local comparison state;
 - optional direct Git push of the three live files.
@@ -43,10 +45,16 @@ save, right-click in the world, and open `Органайзер выжившег�
 - each base submenu can rename it, scan its resources on demand, or safely delete
   only the organizer entry;
 - `Запомнить открытый контейнер` records the currently selected world container;
+- right-click a vehicle while carrying its key, then choose
+  `Закрепить автомобиль за собой`;
+- `Текущее авто` and `Мои автомобили` rename, refresh, or safely forget a
+  registered vehicle without modifying the vehicle itself;
 - `Обновить все записи о ресурсах` writes a fresh snapshot.
 
-Multiple zones such as a bunker, farm, and main home may coexist. Heavy square
-scanning runs only on save or an explicit organizer command, never every frame.
+Multiple zones such as a bunker, farm, and main home may coexist. Registered
+vehicles are scoped to the active save and tracked by vehicleId with keyId as
+supporting identity. Heavy square and vehicle scanning runs only on save or an
+explicit organizer command, never every frame.
 
 Start the foreground relay:
 
@@ -84,8 +92,9 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 17 passing tests, including four sequential snapshots and the
-largest-then-nearest hiking-bag search.
+Current result: 29 passing tests, including sequential item snapshots,
+registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
+alerts, and the largest-then-nearest hiking-bag search.
 
 ## Ordinary ChatGPT
 
@@ -93,7 +102,7 @@ Use [the Russian ChatGPT playbook](docs/CHATGPT_PLAYBOOK_RU.md). Give ChatGPT
 raw URLs for:
 
 - `live/status.json`;
-- `live/current_state.json`;
+- `live/current_state.json` (compact JSON, with duplicate flat item list omitted);
 - `live/changes.jsonl`.
 
 Before GitHub publishing, attach these files manually. Ordinary ChatGPT does
