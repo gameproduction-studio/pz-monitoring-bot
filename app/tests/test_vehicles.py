@@ -134,7 +134,12 @@ def test_lua_vehicle_registry_is_event_driven_and_key_gated():
     events = (lua_root / "PZMB_Events.lua").read_text(encoding="utf-8")
 
     assert 'Vehicles.fileName = "pzmb_vehicles.txt"' in vehicles
-    assert 'safeCall(inventory, "haveThisKeyId", false, keyId)' in vehicles
+    assert "local function containerHasKeyId(container, keyId, seen)" in vehicles
+    assert 'safeCall(container, "haveThisKeyId", false, keyId)' in vehicles
+    assert 'safeCall(item, "getKeyId", -1)' in vehicles
+    assert 'instanceof(item, "InventoryContainer")' in vehicles
+    assert "containerHasKeyId(nested, keyId, seen)" in vehicles
+    assert "return containerHasKeyId(inventory, keyId, {})" in vehicles
     assert "function Scanner.vehicleSnapshot(vehicle, observation)" in scanner
     assert "function Scanner.refreshOwnedVehicles()" in scanner
     assert "IsoObjectPicker.Instance.PickVehicle" in ui

@@ -146,13 +146,40 @@ function Vehicles.findByVehicle(vehicle)
     return Vehicles.findById(vehicleId(vehicle))
 end
 
+local function containerHasKeyId(container, keyId, seen)
+    if not container then return false end
+    seen = seen or {}
+    local marker = tostring(container)
+    if seen[marker] then return false end
+    seen[marker] = true
+
+    -- Build 42.20.3 only checks the direct contents here. Keep the fast path,
+    -- then explicitly descend into key rings and any other nested containers.
+    if safeCall(container, "haveThisKeyId", false, keyId) == true then return true end
+
+    local items = safeCall(container, "getItems", nil)
+    local count = tonumber(safeCall(items, "size", 0)) or 0
+    for index = 0, count - 1 do
+        local item = safeCall(items, "get", nil, index)
+        local itemKeyId = tonumber(safeCall(item, "getKeyId", -1)) or -1
+        if itemKeyId == keyId then return true end
+
+        local nested = nil
+        if item and instanceof(item, "InventoryContainer") then
+            nested = safeCall(item, "getInventory", nil)
+        end
+        if nested and containerHasKeyId(nested, keyId, seen) then return true end
+    end
+    return false
+end
+
 function Vehicles.playerHasKey(vehicle, player)
     player = player or getPlayer()
     if not player or not vehicle then return false end
     local inventory = safeCall(player, "getInventory", nil)
-    local keyId = safeCall(vehicle, "getKeyId", -1)
-    if keyId == nil or tonumber(keyId) == nil or tonumber(keyId) < 0 then return false end
-    return safeCall(inventory, "haveThisKeyId", false, keyId) == true
+    local keyId = tonumber(safeCall(vehicle, "getKeyId", -1)) or -1
+    if keyId < 0 then return false end
+    return containerHasKeyId(inventory, keyId, {})
 end
 
 function Vehicles.register(vehicle)
