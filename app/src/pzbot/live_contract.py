@@ -143,7 +143,11 @@ def build_current_state(
             "reason": "duplicate_of_world_and_assistant_search_index",
             "count": len(items),
         },
-        "recentChanges": events[-200:],
+        "recentChanges": {
+            "omittedFromCurrentState": True,
+            "source": "changes.jsonl",
+            "count": len(events),
+        },
     }
 
 

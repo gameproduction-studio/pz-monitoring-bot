@@ -16,6 +16,7 @@ from urllib.parse import quote
 from .active_save import ActiveSave, activity_signature, resolve_active_save
 from .character_scan import scan_character
 from .git_sync import GitSync
+from .instance_lock import InstanceAlreadyRunning, single_instance
 from .jsonio import atomic_write_json
 from .live_contract import (
     build_current_state,
@@ -262,6 +263,16 @@ def _stable_telemetry_signature(
 
 
 def monitor_mod(settings: Settings) -> int:
+    """Run one relay monitor per workspace, even after accidental double start."""
+    try:
+        with single_instance(settings.runtime_dir / "relay-monitor.lock"):
+            return _monitor_mod_locked(settings)
+    except InstanceAlreadyRunning:
+        LOG.info("mod telemetry relay is already running; duplicate exits")
+        return 0
+
+
+def _monitor_mod_locked(settings: Settings) -> int:
     """Watch only mod telemetry; never open a Project Zomboid save."""
     LOG.info("mod telemetry relay started; stop with Ctrl+C")
     previous: tuple[tuple[str, int, int], ...] | None = None
@@ -286,7 +297,6 @@ def monitor_mod(settings: Settings) -> int:
     except KeyboardInterrupt:
         LOG.info("mod telemetry relay stopped by user")
         return 0
-
 
 def add_base_here(
     settings: Settings,

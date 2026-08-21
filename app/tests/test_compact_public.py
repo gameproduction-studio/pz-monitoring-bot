@@ -24,10 +24,19 @@ def test_public_state_omits_duplicate_flat_item_list_and_writes_compact_json(tmp
         "world": {"containers": [], "vehicles": [], "corpses": [], "groundItems": []},
         "baseZones": [],
     }
-    state = build_current_state(snapshot, events=[], scan_time="2026-01-01T00:00:00+00:00")
+    state = build_current_state(
+        snapshot,
+        events=[{"type": "item_added", "item": {"payload": "large duplicate"}}],
+        scan_time="2026-01-01T00:00:00+00:00",
+    )
     assert "items" not in state
     assert state["itemList"]["omittedFromPublicSnapshot"] is True
     assert state["itemList"]["count"] == 1
+    assert state["recentChanges"] == {
+        "omittedFromCurrentState": True,
+        "source": "changes.jsonl",
+        "count": 1,
+    }
 
     write_live_files(
         tmp_path,
