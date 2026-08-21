@@ -1,7 +1,7 @@
 {
   "schema": "pz-monitoring-bot/current-state/v1",
   "schemaVersion": "1.0.0",
-  "updatedAt": "2026-08-21T18:10:11+00:00",
+  "updatedAt": "2026-08-21T18:10:15+00:00",
   "game": {
     "build": "42.20",
     "compatibleBuilds": [
