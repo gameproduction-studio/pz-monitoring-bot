@@ -3,7 +3,7 @@
   "schemaVersion": "1.0.0",
   "ok": true,
   "parsingSuccessful": true,
-  "lastScanAt": "2026-08-21T12:04:42+00:00",
+  "lastScanAt": "2026-08-21T13:08:02+00:00",
   "lastGameExportEpochMs": 1787313521034,
   "activeSave": {
     "gameMode": "Sandbox",
@@ -21,9 +21,9 @@
     "runtimeLoadedOnly": true,
     "unloadedRemoteContainersComplete": false
   },
-  "changesThisScan": 617,
+  "changesThisScan": 0,
   "itemInstances": 617,
-  "publication": "local_only",
+  "publication": "automatic_direct_push_to_main",
   "readOnlySource": true,
   "relayReadGameSave": false,
   "modStatus": {
