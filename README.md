@@ -20,7 +20,8 @@ before each gameplay answer.
 - itemId, FullType, condition, uses, food state, and weapon ammunition;
 - incoming, outgoing, movement, condition, food, and ammunition events;
 - human container names, coordinates, ownership, and stale-data markers;
-- food/calorie/spoilage views and low-fuel/weak-part vehicle alerts for ChatGPT;
+- food/calorie/spoilage views with exact fresh/stale/rotten semantics, freezer protection, and compost/disposal handling;
+- compact named quantity/location summaries plus low-fuel/weak-part vehicle alerts for ChatGPT;
 - nearest-known-item search with bag capacity, distance, and direction;
 - durable local comparison state;
 - direct Git push of only the approved `chatgpt_state.json` file.
@@ -95,7 +96,7 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 37 passing tests, including scoped sequential snapshots,
+Current result: 39 passing tests, including scoped sequential snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
 alerts, bounded journal preservation, and base-only item search.
 
@@ -107,7 +108,7 @@ the GitHub URL for:
 - `live/chatgpt_state.json` (small v4 bootstrap);
 - `live/chatgpt/manifest.json` (authoritative index for one snapshot);
 - connector-safe thematic pages for character, bases, vehicles, food, changes,
-  and resources (each at most 90 KB).
+  and resources (each at most 32 KB).
 
 `live/current_state.json`, `status.json`, and `changes.jsonl` remain local diagnostic
 files. Ordinary ChatGPT reads the bootstrap, then the manifest, then only the

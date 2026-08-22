@@ -47,7 +47,7 @@ def relay_once(settings: Settings) -> dict[str, Any]:
     status = {
         "schema": "pz-monitoring-bot/status/v2",
         "schemaVersion": current_state["schemaVersion"],
-        "contractRevision": 6,
+        "contractRevision": 7,
         "monitoringScope": "character_bases_registered_vehicles",
         "ok": True,
         "parsingSuccessful": True,

@@ -5,13 +5,14 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from .jsonio import atomic_write_json
 
 
-MAX_CHATGPT_FILE_BYTES = 90_000
+MAX_CHATGPT_FILE_BYTES = 32_000
 
 
 def _encoded(value: Any) -> bytes:
@@ -100,6 +101,155 @@ def _flatten_character_items(
     return rows
 
 
+
+def _human_path(value: Any) -> str:
+    return re.sub(r" #\d+", "", str(value or "Неизвестное место"))
+
+
+def _quantity(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _character_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        full_type = str(row.get("fullType") or "")
+        name = str(row.get("name_ru") or row.get("nameLocalized") or full_type)
+        key = (name, full_type)
+        entry = grouped.setdefault(
+            key,
+            {
+                "name_ru": name,
+                "quantity": 0,
+                "locations": {},
+                "equipped": False,
+                "primaryHand": False,
+                "secondaryHand": False,
+                "conditionPercents": [],
+                "fullType": full_type,
+            },
+        )
+        quantity = _quantity(row.get("quantity")) or 1
+        entry["quantity"] += quantity
+        human_path = _human_path(row.get("containerPath_ru"))
+        entry["locations"][human_path] = entry["locations"].get(human_path, 0) + quantity
+        entry["equipped"] = entry["equipped"] or bool(row.get("equipped"))
+        entry["primaryHand"] = entry["primaryHand"] or bool(row.get("primaryHand"))
+        entry["secondaryHand"] = entry["secondaryHand"] or bool(row.get("secondaryHand"))
+        condition = row.get("condition")
+        condition_max = row.get("conditionMax")
+        if isinstance(condition, (int, float)) and isinstance(condition_max, (int, float)) and condition_max:
+            entry["conditionPercents"].append(round(condition / condition_max * 100, 1))
+
+    result = []
+    for entry in grouped.values():
+        conditions = entry.pop("conditionPercents")
+        locations = entry.pop("locations")
+        entry["locations_ru"] = [
+            {"name_ru": name, "quantity": quantity}
+            for name, quantity in sorted(locations.items())
+        ]
+        if conditions:
+            entry["conditionPercentMin"] = min(conditions)
+            entry["conditionPercentMax"] = max(conditions)
+        result.append(entry)
+    return sorted(
+        result,
+        key=lambda row: (str(row.get("name_ru") or "").casefold(), row.get("fullType") or ""),
+    )
+
+
+_DISPOSAL_TYPES = {"bin", "trash", "trashcan", "garbage", "garbagecan", "composter"}
+_DISPOSAL_WORDS = ("мусор", "компост", "trash", "garbage", "compost")
+
+
+def _is_disposal_location(location: dict[str, Any] | None) -> bool:
+    location = location or {}
+    storage_type = str(location.get("storageType") or "").casefold()
+    if storage_type in _DISPOSAL_TYPES:
+        return True
+    location_text = " ".join(
+        str(location.get(key) or "")
+        for key in ("name_ru", "containerId", "label", "path")
+    ).casefold()
+    return any(word in location_text for word in _DISPOSAL_WORDS)
+
+
+def _enrich_food_record(record: dict[str, Any]) -> dict[str, Any]:
+    row = copy.deepcopy(record)
+    location = row.get("location") or {}
+    freshness = str(row.get("freshness") or "unknown").casefold()
+    storage_type = str(location.get("storageType") or "").casefold()
+    disposal = _is_disposal_location(location)
+    rotten = bool(row.get("rotten")) or freshness == "rotten"
+
+    row["freshness_ru"] = {
+        "fresh": "Свежий",
+        "stale": "Залежавшийся",
+        "rotten": "Испорченный",
+    }.get(freshness, "Состояние не определено")
+    row["edibleStatus"] = (
+        "waste" if rotten else "edible_with_penalty" if freshness == "stale" else "edible"
+    )
+    row["edibleStatus_ru"] = {
+        "waste": "Не для еды: отходы/компост",
+        "edible_with_penalty": "Съедобный, но снижает настроение и повышает скуку",
+        "edible": "Съедобный",
+    }[row["edibleStatus"]]
+    row["storageIntent"] = "compost_or_disposal" if disposal else "food_storage"
+    row["excludeFromEdibleStock"] = disposal or rotten
+    row["attentionRequired"] = (
+        not disposal and not rotten and storage_type not in {"freezer", "fridge", "refrigerator"}
+    )
+
+    if disposal:
+        preservation = "compost_or_disposal"
+    elif storage_type == "freezer":
+        preservation = "frozen" if row.get("frozen") else "freezing_in_freezer"
+    elif storage_type in {"fridge", "refrigerator"}:
+        preservation = "refrigerated"
+    elif row.get("frozen") or (row.get("freezingTime") or 0) > 0:
+        preservation = "thawing_outside_freezer"
+    else:
+        preservation = "room_temperature"
+    row["preservationState"] = preservation
+    row["protectedByColdStorage"] = storage_type in {"freezer", "fridge", "refrigerator"}
+    return row
+
+
+def _resource_summary(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for record in records:
+        locations = []
+        by_scope: dict[str, int] = {}
+        for location in record.get("locations") or []:
+            quantity = _quantity(location.get("quantity"))
+            scope = str(location.get("scope") or "unknown")
+            by_scope[scope] = by_scope.get(scope, 0) + quantity
+            location_name = location.get("name_ru") or "Неизвестное место"
+            locations.append(f"{location_name} ×{quantity}")
+        rows.append(
+            {
+                "name_ru": record.get("name_ru") or record.get("fullType"),
+                "quantity": _quantity(record.get("quantity")),
+                "onCharacter": _quantity(record.get("onCharacter")),
+                "inBases": by_scope.get("world", 0),
+                "inVehicles": by_scope.get("vehicle", 0),
+                "locations": locations,
+                "conditionPercentMin": record.get("conditionPercentMin"),
+                "conditionPercentMax": record.get("conditionPercentMax"),
+                "fullType": record.get("fullType"),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (str(row.get("name_ru") or "").casefold(), row.get("fullType") or ""),
+    )
+
+
 def build_public_files(
     current_state: dict[str, Any],
     public_state: dict[str, Any],
@@ -152,12 +302,20 @@ def build_public_files(
         name = f"character-items-{index:03d}.json"
         files[name] = payload
         character_refs.append(f"live/chatgpt/{name}")
+    character_summary = _character_summary(character_rows)
     files["character.json"] = {
-        "schema": "pz-monitoring-bot/chatgpt-character/v1",
+        "schema": "pz-monitoring-bot/chatgpt-character/v2",
         "snapshot": snapshot,
-        "instruction_ru": "Основные данные персонажа и ссылки на все страницы его предметов.",
+        "instruction_ru": (
+            "inventorySummary уже содержит полный компактный перечень вещей персонажа. "
+            "Показывай таблицу: предмет, количество, где лежит, экипирован/в руках. "
+            "inventoryPages открывай только для itemId и точных свойств экземпляров."
+        ),
         "character": character,
         "inventoryItemGroups": len(character_rows),
+        "inventorySummaryCount": len(character_summary),
+        "duplicateItemKinds": sum(1 for row in character_summary if row["quantity"] > 1),
+        "inventorySummary": character_summary,
         "inventoryPages": character_refs,
     }
 
@@ -210,8 +368,62 @@ def build_public_files(
     }
 
     food = copy.deepcopy(((public_state.get("assistantViews") or {}).get("food") or {}))
-    food_records = list(food.pop("summary", []) or [])
+    food_records = [
+        _enrich_food_record(record)
+        for record in list(food.pop("summary", []) or [])
+    ]
     food.pop("cookingSummary", None)
+    food["highCalorieSummary"] = [
+        _enrich_food_record(record)
+        for record in list(food.get("highCalorieSummary") or [])
+        if not _is_disposal_location(record.get("location"))
+        and not record.get("rotten")
+        and str(record.get("freshness") or "").casefold() != "rotten"
+    ]
+    disposal_container_ids = {
+        str((record.get("location") or {}).get("containerId"))
+        for record in food_records
+        if record.get("storageIntent") == "compost_or_disposal"
+    }
+    raw_alerts = list(food.get("spoilageAlerts") or [])
+    food["spoilageAlerts"] = [
+        alert
+        for alert in raw_alerts
+        if not any(container_id and container_id in str(alert.get("location") or "")
+                   for container_id in disposal_container_ids)
+    ]
+    disposal_records = [
+        record for record in food_records
+        if record.get("storageIntent") == "compost_or_disposal"
+    ]
+    edible_records = [record for record in food_records if not record.get("excludeFromEdibleStock")]
+    food["foodSemantics"] = {
+        "fresh": "Свежий",
+        "stale": "Залежавшийся: съедобен, но снижает настроение и повышает скуку",
+        "rotten": "Испорченный: не учитывать как еду",
+        "freezer": "Еда в морозильнике защищена: уже заморожена или замерзает",
+        "disposal": "Еда в мусорке/компостной таре намеренно исключена из съедобных запасов",
+    }
+    food["edibleStock"] = {
+        "groups": len(edible_records),
+        "items": sum(_quantity(record.get("quantity")) for record in edible_records),
+        "caloriesReportedByGame": round(sum(float(record.get("caloriesTotalReportedByGame") or 0) for record in edible_records), 2),
+    }
+    food["compostOrDisposal"] = {
+        "groups": len(disposal_records),
+        "items": sum(_quantity(record.get("quantity")) for record in disposal_records),
+        "records": [
+            {
+                "name_ru": record.get("name_ru"),
+                "quantity": record.get("quantity"),
+                "freshness_ru": record.get("freshness_ru"),
+                "location": record.get("location"),
+                "fullType": record.get("fullType"),
+            }
+            for record in disposal_records
+        ],
+    }
+    food["suppressedDisposalAlerts"] = len(raw_alerts) - len(food["spoilageAlerts"])
     food_pages = _page_records(
         schema="pz-monitoring-bot/chatgpt-food-page/v1",
         snapshot=snapshot,
@@ -226,12 +438,47 @@ def build_public_files(
         name = f"food-{index:03d}.json"
         files[name] = payload
         food_refs.append(f"live/chatgpt/{name}")
+    food_summary_fields = [
+        "name_ru", "quantity", "freshness_ru", "edibleStatus",
+        "preservationState", "calories", "location_ru", "fullType",
+    ]
+    food_summary_rows = [
+        [
+            record.get("name_ru"),
+            record.get("quantity"),
+            record.get("freshness_ru"),
+            record.get("edibleStatus"),
+            record.get("preservationState"),
+            record.get("caloriesTotalReportedByGame"),
+            (record.get("location") or {}).get("name_ru"),
+            record.get("fullType"),
+        ]
+        for record in food_records
+    ]
+    food["highCalorieSummary"] = [
+        {
+            "name_ru": record.get("name_ru"),
+            "quantity": record.get("quantity"),
+            "calories": record.get("caloriesTotalReportedByGame"),
+            "freshness_ru": record.get("freshness_ru"),
+            "preservationState": record.get("preservationState"),
+            "location_ru": (record.get("location") or {}).get("name_ru"),
+            "fullType": record.get("fullType"),
+        }
+        for record in food["highCalorieSummary"]
+    ]
     files["food.json"] = {
-        "schema": "pz-monitoring-bot/chatgpt-food-index/v1",
+        "schema": "pz-monitoring-bot/chatgpt-food-index/v2",
         "snapshot": snapshot,
-        "instruction_ru": "Сводка еды и ссылки на все страницы foodPages.",
+        "instruction_ru": (
+            "Сначала используй edibleStock, highCalorieSummary и spoilageAlerts. "
+            "compostOrDisposal — намеренно отложенные отходы: не советуй их есть, "
+            "охлаждать или спасать. В морозильнике еда защищена, даже если ещё замерзает."
+        ),
         **food,
         "foodGroupCount": len(food_records),
+        "foodSummaryFields": food_summary_fields,
+        "foodSummaryRows": food_summary_rows,
         "foodPages": food_refs,
     }
 
@@ -276,15 +523,40 @@ def build_public_files(
         name = f"resources-{index:03d}.json"
         files[name] = payload
         resource_refs.append(f"live/chatgpt/{name}")
+    resource_summary = _resource_summary(resource_records)
+    resource_summary_pages = _page_records(
+        schema="pz-monitoring-bot/chatgpt-resource-summary-page/v1",
+        snapshot=snapshot,
+        records=resource_summary,
+        instruction_ru=(
+            "Компактная полная сводка ресурсов. Для таблицы показывай name_ru, quantity "
+            "и locations; FullType оставляй техническим полем."
+        ),
+    )
+    resource_summary_refs = []
+    for index, payload in enumerate(resource_summary_pages, start=1):
+        name = f"resource-summary-{index:03d}.json"
+        files[name] = payload
+        resource_summary_refs.append(f"live/chatgpt/{name}")
+
     files["resources.json"] = {
-        "schema": "pz-monitoring-bot/chatgpt-resources-index/v1",
+        "schema": "pz-monitoring-bot/chatgpt-resources-index/v3",
         "snapshot": snapshot,
         "instruction_ru": (
-            "Для поиска предмета последовательно проверь resourcePages. Показывай name_ru, "
-            "количество и понятное место; FullType оставляй техническим полем."
+            "summaryPages — полный компактный учёт: название, количество и места. "
+            "Для обзора прочитай их и выведи короткую таблицу. duplicateItems помогает "
+            "найти копии. resourcePages открывай только для itemId и точного поиска. "
+            "FullType не показывай вместо русского названия."
         ),
         **resources,
         "resourceGroupCount": len(resource_records),
+        "duplicateGroupCount": sum(1 for row in resource_summary if row["quantity"] > 1),
+        "summaryPages": resource_summary_refs,
+        "duplicateItems": [
+            {"name_ru": row["name_ru"], "quantity": row["quantity"], "fullType": row["fullType"]}
+            for row in resource_summary
+            if row["quantity"] > 1
+        ],
         "resourcePages": resource_refs,
     }
 
