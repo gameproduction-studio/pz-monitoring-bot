@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from pzbot.live_contract import build_current_state, write_live_files
+from pzbot.public_surface import MAX_CHATGPT_FILE_BYTES
 
 
 def test_public_state_omits_duplicate_flat_item_list_and_writes_compact_json(tmp_path):
@@ -48,6 +49,12 @@ def test_public_state_omits_duplicate_flat_item_list_and_writes_compact_json(tmp
     assert '\n  "' not in raw
     assert json.loads(raw)["summary"]["physicalItemsVisible"] == 1
     assert (tmp_path / "chatgpt_state.json").is_file()
+    assert (tmp_path / "chatgpt" / "manifest.json").is_file()
+    bootstrap = json.loads((tmp_path / "chatgpt_state.json").read_text(encoding="utf-8"))
+    assert bootstrap["schema"] == "pz-monitoring-bot/chatgpt-state/v4"
+    assert bootstrap["manifestPath"] == "live/chatgpt/manifest.json"
+    for path in (tmp_path / "chatgpt").glob("*.json"):
+        assert path.stat().st_size <= MAX_CHATGPT_FILE_BYTES
 
 
 def test_public_journal_reports_truncation_and_survives_relay_restart(tmp_path):
@@ -67,20 +74,21 @@ def test_public_journal_reports_truncation_and_survives_relay_restart(tmp_path):
     }
     events = [{"kind": "move", "itemId": str(index)} for index in range(150)]
     write_live_files(tmp_path, current_state=current, status=status, events=events)
-    first = json.loads((tmp_path / "chatgpt_state.json").read_text(encoding="utf-8"))
-    assert first["recentChangesMeta"] == {
+    first_bootstrap = (tmp_path / "chatgpt_state.json").read_bytes()
+    first_index = json.loads((tmp_path / "chatgpt" / "changes.json").read_text(encoding="utf-8"))
+    first_page = json.loads((tmp_path / "chatgpt" / "changes-001.json").read_text(encoding="utf-8"))
+    assert first_index["meta"] == {
         "totalDetected": 150,
         "returned": 100,
         "limit": 100,
         "truncated": True,
     }
-    assert first["recentChanges"][0]["itemId"] == "50"
+    assert first_page["records"][0]["itemId"] == "50"
 
     write_live_files(tmp_path, current_state=current, status=status, events=[])
-    restarted = json.loads((tmp_path / "chatgpt_state.json").read_text(encoding="utf-8"))
-    assert restarted["recentChanges"] == first["recentChanges"]
-    assert restarted["recentChangesMeta"] == first["recentChangesMeta"]
-    assert restarted["status"]["changesThisScan"] == 150
+    assert (tmp_path / "chatgpt_state.json").read_bytes() == first_bootstrap
+    restarted_index = json.loads((tmp_path / "chatgpt" / "changes.json").read_text(encoding="utf-8"))
+    assert restarted_index == first_index
 
     previous_public_bytes = (tmp_path / "chatgpt_state.json").read_bytes()
     later_current = build_current_state(
@@ -93,6 +101,7 @@ def test_public_journal_reports_truncation_and_survives_relay_restart(tmp_path):
 
     next_status = {**status, "modStatus": {"sequence": 10}, "changesThisScan": 0}
     write_live_files(tmp_path, current_state=current, status=next_status, events=[])
-    next_export = json.loads((tmp_path / "chatgpt_state.json").read_text(encoding="utf-8"))
-    assert next_export["recentChanges"] == []
-    assert next_export["recentChangesMeta"]["totalDetected"] == 0
+    next_index = json.loads((tmp_path / "chatgpt" / "changes.json").read_text(encoding="utf-8"))
+    next_page = json.loads((tmp_path / "chatgpt" / "changes-001.json").read_text(encoding="utf-8"))
+    assert next_page["records"] == []
+    assert next_index["meta"]["totalDetected"] == 0

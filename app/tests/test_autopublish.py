@@ -59,6 +59,9 @@ def test_publish_commit_is_limited_to_live_files(tmp_path):
         "status.json",
     ):
         (live / name).write_text("test", encoding="utf-8")
+    chatgpt = live / "chatgpt"
+    chatgpt.mkdir()
+    (chatgpt / "manifest.json").write_text("test", encoding="utf-8")
 
     sync = GitSync(publish_settings(tmp_path))
     calls = []
@@ -74,7 +77,9 @@ def test_publish_commit_is_limited_to_live_files(tmp_path):
 
     commit = next(args for args in calls if args and args[0] == "commit")
     assert "--only" in commit
-    assert commit[-1:] == ("live/chatgpt_state.json",)
+    assert commit[-2:] == ("live/chatgpt_state.json", "live/chatgpt")
+    add = next(args for args in calls if args and args[0] == "add")
+    assert add[:3] == ("add", "-A", "--")
     assert calls[-1] == ("push", "origin", "HEAD:main")
 
 

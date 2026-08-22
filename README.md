@@ -80,8 +80,9 @@ workflow is only:
 1. play normally; transfers and container changes export automatically after a short debounce;
 2. the mod writes local telemetry;
 3. the background relay waits for both JSON files to stabilize;
-4. it updates four local `live` files and pushes only `chatgpt_state.json`;
-5. ChatGPT rereads that GitHub file on the next user turn.
+4. it updates local diagnostics plus a bounded `live/chatgpt/` public surface;
+5. it pushes the small bootstrap, manifest, and thematic JSON pages;
+6. ChatGPT rereads the manifest and only the sections needed for the next answer.
 
 The relay polls two file timestamps every five seconds; it never scans game
 containers and therefore does not affect in-game FPS. Stop it with
@@ -94,7 +95,7 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 35 passing tests, including scoped sequential snapshots,
+Current result: 37 passing tests, including scoped sequential snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
 alerts, bounded journal preservation, and base-only item search.
 
@@ -103,11 +104,15 @@ alerts, bounded journal preservation, and base-only item search.
 Use [the Russian ChatGPT playbook](docs/CHATGPT_PLAYBOOK_RU.md). Give ChatGPT
 the GitHub URL for:
 
-- `live/chatgpt_state.json` (human-first v3 gameplay facts, limited to owned scope);
+- `live/chatgpt_state.json` (small v4 bootstrap);
+- `live/chatgpt/manifest.json` (authoritative index for one snapshot);
+- connector-safe thematic pages for character, bases, vehicles, food, changes,
+  and resources (each at most 90 KB).
 
 `live/current_state.json`, `status.json`, and `changes.jsonl` remain local diagnostic
-files. Ordinary ChatGPT reads `chatgpt_state.json`; it embeds synchronization
-status and the most recent changes while staying below the connector limit.
+files. Ordinary ChatGPT reads the bootstrap, then the manifest, then only the
+thematic files needed for the question. Large lists are deterministically paged,
+so inventory growth cannot make one response exceed the connector limit.
 
 Ordinary ChatGPT does not receive background push events; practical realtime means the relay publishes automatically and ChatGPT rereads `chatgpt_state.json` on every user turn.
 

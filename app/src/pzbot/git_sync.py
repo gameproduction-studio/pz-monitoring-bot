@@ -61,16 +61,17 @@ class GitSync:
 
         live_paths = (
             "live/chatgpt_state.json",
+            "live/chatgpt",
         )
         missing = [
             str(repository / path)
             for path in live_paths
-            if not (repository / path).is_file()
+            if not (repository / path).exists()
         ]
         if missing:
             raise RuntimeError(f"Live files missing before publish: {missing}")
 
-        self._git("add", "--", *live_paths)
+        self._git("add", "-A", "--", *live_paths)
         if self._git("diff", "--cached", "--quiet", "--", *live_paths, check=False).returncode == 0:
             return "unchanged"
 

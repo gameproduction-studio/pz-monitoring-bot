@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .jsonio import atomic_write_json
+from .public_surface import write_public_files
 from .state_diff import flatten_state
 
 
@@ -629,7 +630,7 @@ def append_changes(path: Path, events: list[dict[str, Any]]) -> None:
     os.replace(temporary, path)
 
 
-def _same_public_export(
+def _same_public_snapshot(
     previous_public: dict[str, Any],
     status: dict[str, Any],
 ) -> bool:
@@ -642,6 +643,16 @@ def _same_public_export(
         previous_save == current_save
         and previous_sequence is not None
         and previous_sequence == current_sequence
+    )
+
+
+def _same_public_export(
+    previous_public: dict[str, Any],
+    status: dict[str, Any],
+) -> bool:
+    previous_status = previous_public.get("status") or {}
+    return (
+        _same_public_snapshot(previous_public, status)
         and previous_status.get("contractRevision") == status.get("contractRevision")
         and previous_status.get("monitoringScope") == status.get("monitoringScope")
     )
@@ -664,8 +675,7 @@ def write_live_files(
             previous_public = json.loads(public_path.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError):
             previous_public = {}
-        if _same_public_export(previous_public, public_status):
-            reuse_previous_public = True
+        if _same_public_snapshot(previous_public, public_status):
             public_events = copy.deepcopy(previous_public.get("recentChanges") or [])
             previous_meta = previous_public.get("recentChangesMeta") or {}
             public_total = int(previous_meta.get("totalDetected") or len(public_events))
@@ -673,19 +683,26 @@ def write_live_files(
             public_status["changesThisScan"] = previous_status.get(
                 "changesThisScan", public_total
             )
+            reuse_previous_public = _same_public_export(previous_public, public_status)
 
-    # Local current_state remains a rich diagnostic file. The public connector
-    # receives the compact, scope-limited assistant surface only.
+    # Local current_state remains a rich diagnostic file. Ordinary ChatGPT gets
+    # a small bootstrap plus connector-safe thematic files with bounded pages.
     atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
     if not reuse_previous_public:
+        rich_public = build_chatgpt_state(
+            current_state,
+            status=public_status,
+            events=public_events,
+            recent_changes_total=public_total,
+        )
+        bootstrap = write_public_files(
+            live_dir,
+            current_state=current_state,
+            public_state=rich_public,
+        )
         atomic_write_json(
             public_path,
-            build_chatgpt_state(
-                current_state,
-                status=public_status,
-                events=public_events,
-                recent_changes_total=public_total,
-            ),
+            bootstrap,
             compact=True,
         )
     append_changes(live_dir / "changes.jsonl", events)
