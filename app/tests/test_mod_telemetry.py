@@ -211,7 +211,7 @@ def test_lua_scanner_was_not_truncated():
     assert "for _, built in pairs(Scanner.baseIndexesBuilt) do" in text
 
 
-def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
+def test_lua_runtime_never_scans_or_exports_in_background():
     root = Path(__file__).parents[2]
     lua_root = root / "mod/PZMonitoringBot/common/media/lua/client/PZMonitoringBot"
     events = (lua_root / "PZMB_Events.lua").read_text(encoding="utf-8")
@@ -222,16 +222,18 @@ def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
     assert "Events.EveryOneMinute" not in events
     assert "Events.EveryTenMinutes" not in events
     assert "Events.OnContainerUpdate.Add(onContainerUpdate)" not in events
-    assert "Events.OnTick.Add(onTick)" in events
-    assert "if not Runtime.dirty then return end" in events
-    assert "Runtime.debounceMs = 2500" not in events
-    assert "debounceMs = 2500" in events
-    assert "minimumIntervalMs = 5000" in events
+    assert "Events.OnTick.Add" not in events
+    assert "Events.OnPostSave.Add" not in events
+    assert "scanBaseLoadedSquares" not in events
+    assert "refreshOwnedVehicles" not in events
+    assert "PZMB.Export.write" not in events
     assert "ISBaseTimedAction.pzmbOriginalPerform" not in events
     assert 'Runtime.markDirty("timed_action_completed")' not in events
-    assert "ISInventoryTransferAction.pzmbOriginalPerform" in events
-    assert 'Runtime.markDirty("inventory_transfer")' in events
-    assert "Events.OnPostSave.Add(onPostSave)" in events
+    assert "ISInventoryTransferAction" not in events
+    assert 'Runtime.markDirty("inventory_transfer")' not in events
+    assert "Events.OnGameStart.Add(onGameStart)" in events
+    assert "PZMB.Scanner.scanBaseLoadedSquares()" in ui
+    assert 'PZMB.Export.write("manual")' in ui
     assert "Events.OnRefreshInventoryWindowContainers" not in events
     assert 'if parent then customName = safeCall(container, "getCustomName", nil) end' in scanner
     assert 'tr("UI_PZMB_RememberContainer")' not in ui
