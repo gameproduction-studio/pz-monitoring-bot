@@ -32,6 +32,7 @@ from .jsonio import atomic_write_json
 
 CALCULATION_REQUEST = "pzmb_calculation_request.json"
 CALCULATION_RESPONSE = "pzmb_calculation_response.txt"
+CALCULATION_SCHEMA = "pz-monitoring-bot/supply-calculations/v2"
 
 
 def _calculation_request(settings: Settings) -> dict[str, Any] | None:
@@ -87,7 +88,9 @@ def relay_once(settings: Settings) -> dict[str, Any]:
         request and int(request.get("snapshotSequence") or -1) == raw_sequence
     )
     if request_matches_snapshot and (
-        not calculations or calculations.get("requestId") != request.get("requestId")
+        not calculations
+        or calculations.get("requestId") != request.get("requestId")
+        or calculations.get("schema") != CALCULATION_SCHEMA
     ):
         try:
             calculations = build_supply_calculations(
@@ -120,7 +123,7 @@ def relay_once(settings: Settings) -> dict[str, Any]:
     status = {
         "schema": "pz-monitoring-bot/status/v2",
         "schemaVersion": current_state["schemaVersion"],
-        "contractRevision": 9,
+        "contractRevision": 10,
         "monitoringScope": "character_bases_registered_vehicles",
         "ok": True,
         "parsingSuccessful": True,

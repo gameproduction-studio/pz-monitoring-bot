@@ -51,7 +51,7 @@ save, right-click in the world, and open `Органайзер выжившег�
 - `Текущее авто` and `Мои автомобили` rename, refresh, or safely forget a
   registered vehicle without modifying the vehicle itself;
 - `Сделать опись` вручную сканирует персонажа, базы и закреплённые автомобили;
-- `Сделать расчёты` передаёт уже готовую опись внешней программе: она считает остатки, калории, дубликаты и доступные рецепты по установленному Build 42.20.3.
+- `Сделать расчёты` передаёт уже готовую опись внешней программе: она считает остатки, калории, дубликаты и точные планы блюд по локальным правилам установленного Build 42.20.3. Для каждого блюда публикуются ингредиенты, места хранения, расход, вода, число мисок и пищевая ценность; ChatGPT получает готовый расчёт вместо угадывания рецепта.
 
 Multiple zones such as a bunker, farm, and main home may coexist. Registered
 vehicles are scoped to the active save and tracked by vehicleId with keyId as

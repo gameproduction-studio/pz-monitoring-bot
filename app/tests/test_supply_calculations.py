@@ -13,6 +13,25 @@ def _game_catalog(tmp_path):
     game = tmp_path / "game"
     recipes = game / "media/scripts/generated/recipes"
     recipes.mkdir(parents=True)
+    items = game / "media/scripts/generated/items"
+    items.mkdir(parents=True)
+    (items / "food.txt").write_text(
+        """
+module Base
+{
+    item Carrots
+    {
+        ItemType = base:food,
+        EvolvedRecipe = Stew:12;Soup:12,
+        HungerChange = -10,
+        Calories = 25,
+        Carbohydrates = 6,
+        Proteins = 1,
+    }
+}
+""",
+        encoding="utf-8",
+    )
     (recipes / "recipes_cooking.txt").write_text(
         """
 module Base
@@ -45,6 +64,8 @@ module Base
         ResultItem = Base.PotOfStew,
         Cookable = true,
         Name = Prepare Stew,
+        Template = Stew,
+        MinimumWater = 0.9,
     }
 }
 """,
@@ -150,6 +171,13 @@ def test_calculation_surface_is_paged_and_connector_safe(tmp_path):
     assert bootstrap["sectionPaths"]["calculations"] == "live/chatgpt/calculations.json"
     assert calculations_index["status"]["ready"] is True
     assert calculations_index["craftableRecipePages"]
+    assert calculations_index["mealPlanPages"]
+    meal_records = [
+        record
+        for path in calculations_index["mealPlanPages"]
+        for record in files[path.removeprefix("live/chatgpt/")]["records"]
+    ]
+    assert any(record["profile"] == "balanced_nutrition" for record in meal_records)
     assert all(entry["withinConnectorLimit"] for entry in manifest["files"])
     assert all(
         len((json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"))

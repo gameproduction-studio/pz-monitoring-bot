@@ -37,6 +37,20 @@ def test_calculation_request_is_watched_acknowledged_and_published(tmp_path, mon
             "recipes": {},
         }
 
+    settings.runtime_dir.mkdir(parents=True, exist_ok=True)
+    settings.runtime_dir.joinpath("supply_calculations.json").write_text(
+        json.dumps(
+            {
+                "schema": "pz-monitoring-bot/supply-calculations/v1",
+                "requestId": "12:test",
+                "saveId": "Sandbox:test",
+                "snapshotSequence": 12,
+                "createdAt": "old-cache",
+            }
+        ),
+        encoding="utf-8",
+    )
+
     monkeypatch.setattr("pzbot.mod_relay.build_supply_calculations", fake_calculations)
     signature = _telemetry_signature(settings)
     assert any(row[0] == "pzmb_calculation_request.json" for row in signature)
@@ -48,5 +62,5 @@ def test_calculation_request_is_watched_acknowledged_and_published(tmp_path, mon
     )
     assert response == "12:test\tok\tcompleted_and_published\n"
     status = json.loads(settings.live_dir.joinpath("status.json").read_text(encoding="utf-8"))
-    assert status["contractRevision"] == 9
+    assert status["contractRevision"] == 10
     assert status["calculations"]["ready"] is True

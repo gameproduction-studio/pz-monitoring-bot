@@ -589,6 +589,9 @@ def build_public_files(
     nearly_craftable = list(calculation_recipes.pop("nearlyCraftable", []) or [])
     all_cooking_recipes = list(calculation_recipes.pop("allCookingRecipes", []) or [])
     evolved_dishes = list(calculation_recipes.pop("evolvedDishOptions", []) or [])
+    meal_plans = list(calculation_recipes.pop("recommendedMealPlans", []) or [])
+    for dish in evolved_dishes:
+        dish.pop("plans", None)
 
     calculation_page_specs = [
         ("calculation-duplicates", "pz-monitoring-bot/calculation-duplicates/v1", duplicate_groups,
@@ -605,6 +608,8 @@ def build_public_files(
          "Полный проверенный каталог рецептов готовки из установленного билда."),
         ("calculation-evolved", "pz-monitoring-bot/calculation-evolved/v1", evolved_dishes,
          "Составные блюда и доступные высококалорийные ингредиенты."),
+        ("calculation-meal-plans", "pz-monitoring-bot/calculation-meal-plans/v1", meal_plans,
+         "Готовые планы блюд по точным правилам установленного билда и фактическим запасам."),
     ]
     calculation_refs: dict[str, list[str]] = {}
     for prefix, schema, records, instruction in calculation_page_specs:
@@ -646,6 +651,7 @@ def build_public_files(
         "nearlyCraftablePages": calculation_refs["calculation-near"],
         "allCookingRecipePages": calculation_refs["calculation-recipes"],
         "evolvedDishPages": calculation_refs["calculation-evolved"],
+        "mealPlanPages": calculation_refs["calculation-meal-plans"],
     }
     entries = []
     for name, payload in sorted(files.items()):

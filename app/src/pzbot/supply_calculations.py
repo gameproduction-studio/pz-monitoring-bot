@@ -7,13 +7,14 @@ Russian localization, and produces a compact decision surface for ChatGPT.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 import json
 import re
 from pathlib import Path
 from typing import Any, Iterable
 
 from .state_diff import flatten_state
+from .meal_planner import build_meal_plans
 
 
 _DISPOSAL_WORDS = ("мусор", "компост", "trash", "garbage", "compost")
@@ -365,47 +366,12 @@ def build_supply_calculations(
         and recipe["unverifiedInputGroups"] == 0
     ]
 
-    ingredient_recipes: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for item in edible:
-        evolved_value = item.get("evolvedRecipeName")
-        if not isinstance(evolved_value, str):
-            continue
-        for option in evolved_value.split(";"):
-            definition = option.strip().partition("|")[0]
-            recipe_name = definition.rpartition(":")[0] or definition
-            recipe_name = recipe_name.strip()
-            if recipe_name:
-                ingredient_recipes[recipe_name].append(item)
-
-    evolved_options = []
-    for name, candidates in ingredient_recipes.items():
-        definition = (catalog.get("evolvedRecipes") or {}).get(name) or {
-            "recipeId": name,
-            "internalName": name,
-            "name_ru": name,
-        }
-        base_item = definition.get("baseItem")
-        evolved_options.append(
-            {
-                **definition,
-                "baseItemAvailable": bool(base_item and type_counts[str(base_item)] > 0),
-                "ingredientKindsAvailable": len({str(item.get("fullType")) for item in candidates}),
-                "ingredientInstancesAvailable": len(candidates),
-                "knownIngredientCaloriesAvailable": round(sum(float(item.get("calories") or 0) for item in candidates), 2),
-                "highestCalorieIngredients": candidates[:12],
-                "calorieRule_ru": (
-                    "Это сумма известных калорий доступных ингредиентов для ранжирования, "
-                    "а не гарантированная калорийность одной готовой порции."
-                ),
-            }
-        )
-    evolved_options.sort(
-        key=lambda row: (-float(row.get("knownIngredientCaloriesAvailable") or 0), str(row.get("name_ru") or row.get("internalName")))
-    )
+    meal_plans = build_meal_plans(owned, game_path=game_path)
+    evolved_options = meal_plans.get("dishOptions") or []
 
     raw_sequence = int((snapshot.get("runtimeExport") or {}).get("sequence") or 0)
     return {
-        "schema": "pz-monitoring-bot/supply-calculations/v1",
+        "schema": "pz-monitoring-bot/supply-calculations/v2",
         "createdAt": created_at,
         "requestId": request.get("requestId"),
         "saveId": (snapshot.get("save") or {}).get("id"),
@@ -440,6 +406,12 @@ def build_supply_calculations(
             "nearlyCraftable": near,
             "allCookingRecipes": evaluated,
             "evolvedDishOptions": evolved_options,
+            "recommendedMealPlans": meal_plans.get("recommendedPlans") or [],
+            "mealPlanning": {
+                "schema": meal_plans.get("schema"),
+                "catalog": meal_plans.get("catalog") or {},
+                "rule_ru": meal_plans.get("rule_ru"),
+            },
             "rule_ru": (
                 "craftableNowExact учитывает только явно описанные предметы и теги. "
                 "Рецепты с жидкостями, mapper или неизвестными условиями не объявляются готовыми без проверки."
