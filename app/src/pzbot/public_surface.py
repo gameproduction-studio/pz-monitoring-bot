@@ -178,6 +178,18 @@ def _is_disposal_location(location: dict[str, Any] | None) -> bool:
     return any(word in location_text for word in _DISPOSAL_WORDS)
 
 
+def _is_actionable_spoilage_alert(alert: dict[str, Any]) -> bool:
+    if str(alert.get("severity") or "").casefold() != "low":
+        return True
+    hours_to_stale = alert.get("estimatedGameHoursToStale")
+    hours_to_rotten = alert.get("estimatedGameHoursToRotten")
+    if not isinstance(hours_to_stale, (int, float)):
+        return True
+    return hours_to_stale <= 72 or (
+        isinstance(hours_to_rotten, (int, float)) and hours_to_rotten <= 120
+    )
+
+
 def _enrich_food_record(record: dict[str, Any]) -> dict[str, Any]:
     row = copy.deepcopy(record)
     location = row.get("location") or {}
@@ -386,11 +398,14 @@ def build_public_files(
         if record.get("storageIntent") == "compost_or_disposal"
     }
     raw_alerts = list(food.get("spoilageAlerts") or [])
-    food["spoilageAlerts"] = [
+    non_disposal_alerts = [
         alert
         for alert in raw_alerts
         if not any(container_id and container_id in str(alert.get("location") or "")
                    for container_id in disposal_container_ids)
+    ]
+    food["spoilageAlerts"] = [
+        alert for alert in non_disposal_alerts if _is_actionable_spoilage_alert(alert)
     ]
     disposal_records = [
         record for record in food_records
@@ -423,7 +438,8 @@ def build_public_files(
             for record in disposal_records
         ],
     }
-    food["suppressedDisposalAlerts"] = len(raw_alerts) - len(food["spoilageAlerts"])
+    food["suppressedDisposalAlerts"] = len(raw_alerts) - len(non_disposal_alerts)
+    food["deferredLowPriorityAlerts"] = len(non_disposal_alerts) - len(food["spoilageAlerts"])
     food_pages = _page_records(
         schema="pz-monitoring-bot/chatgpt-food-page/v1",
         snapshot=snapshot,

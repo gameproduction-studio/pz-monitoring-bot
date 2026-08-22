@@ -73,6 +73,13 @@ def _state():
                 "spoilageAlerts": [
                     {"itemId": "11", "location": "world/container:world:1:bin"},
                     {"itemId": "12", "location": "character/mainInventory"},
+                    {
+                        "itemId": "13",
+                        "location": "world/container:world:3:shelf",
+                        "severity": "low",
+                        "estimatedGameHoursToStale": 4000,
+                        "estimatedGameHoursToRotten": 8000,
+                    },
                 ],
             },
             "resources": {
@@ -140,6 +147,7 @@ def test_food_distinguishes_disposal_stale_and_freezing_in_freezer():
         {"itemId": "12", "location": "character/mainInventory"}
     ]
     assert food_index["compostOrDisposal"]["items"] == 2
+    assert food_index["deferredLowPriorityAlerts"] == 1
 
     assert mayonnaise["preservationState"] == "freezing_in_freezer"
     assert mayonnaise["protectedByColdStorage"] is True
