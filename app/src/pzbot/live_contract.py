@@ -116,12 +116,9 @@ def build_current_state(
         },
         "save": copy.deepcopy(snapshot["save"]),
         "ownership": {
-            "policy": "opened_or_inside_base_zone_or_registered_vehicle",
+            "policy": "character_or_inside_saved_base_or_registered_vehicle",
             "baseZones": copy.deepcopy(snapshot.get("baseZones") or []),
-            "openedInferenceWarning": (
-                "explored usually means opened in Build 42, but some game systems "
-                "can set it automatically; inspect ownership.confidence."
-            ),
+            "persistentScope": "character_bases_registered_vehicles",
         },
         "summary": {
             "physicalItemsVisible": len(items),
@@ -170,6 +167,7 @@ def build_chatgpt_state(
     *,
     status: dict[str, Any] | None = None,
     events: list[dict[str, Any]] | None = None,
+    recent_changes_total: int | None = None,
 ) -> dict[str, Any]:
     """Create a small connector-safe view without losing gameplay facts."""
     character = copy.deepcopy(current_state.get("character") or {})
@@ -205,6 +203,8 @@ def build_chatgpt_state(
                 location.get("position"),
                 location.get("owned"),
                 location.get("stale"),
+                location.get("scope"),
+                location.get("containerType"),
             ]
         )
         return location_id
@@ -317,6 +317,8 @@ def build_chatgpt_state(
             "position",
             "owned",
             "stale",
+            "scope",
+            "containerType",
         ],
         "items": location_rows,
     }
@@ -346,6 +348,17 @@ def build_chatgpt_state(
             for value in values
         ]
 
+    recent_limit = 100
+    recent_changes = copy.deepcopy((events or [])[-recent_limit:])
+    detected_change_count = (
+        len(events or []) if recent_changes_total is None else recent_changes_total
+    )
+    recent_changes_meta = {
+        "totalDetected": detected_change_count,
+        "returned": len(recent_changes),
+        "limit": recent_limit,
+        "truncated": detected_change_count > len(recent_changes),
+    }
     state = {
         "schema": "pz-monitoring-bot/chatgpt-state/v2",
         "status": copy.deepcopy(status or {}),
@@ -369,7 +382,8 @@ def build_chatgpt_state(
         },
         "assistantViews": views,
         "source": copy.deepcopy(current_state.get("source") or {}),
-        "recentChanges": copy.deepcopy((events or [])[-100:]),
+        "recentChanges": recent_changes,
+        "recentChangesMeta": recent_changes_meta,
     }
     return _without_none_values(state)
 
@@ -450,6 +464,23 @@ def append_changes(path: Path, events: list[dict[str, Any]]) -> None:
     os.replace(temporary, path)
 
 
+def _same_public_export(
+    previous_public: dict[str, Any],
+    status: dict[str, Any],
+) -> bool:
+    previous_status = previous_public.get("status") or {}
+    previous_save = (previous_status.get("activeSave") or {}).get("id")
+    current_save = (status.get("activeSave") or {}).get("id")
+    previous_sequence = (previous_status.get("modStatus") or {}).get("sequence")
+    current_sequence = (status.get("modStatus") or {}).get("sequence")
+    return (
+        previous_save == current_save
+        and previous_sequence is not None
+        and previous_sequence == current_sequence
+        and previous_status.get("contractRevision") == status.get("contractRevision")
+        and previous_status.get("monitoringScope") == status.get("monitoringScope")
+    )
+
 def write_live_files(
     live_dir: Path,
     *,
@@ -458,19 +489,37 @@ def write_live_files(
     events: list[dict[str, Any]],
 ) -> None:
     live_dir.mkdir(parents=True, exist_ok=True)
-    # current_state can contain more than a thousand rich item records. Compact
-    # encoding plus omission of the duplicate flat list keeps it below the
-    # ordinary ChatGPT source-size limit without discarding world facts.
+    public_path = live_dir / "chatgpt_state.json"
+    public_status = copy.deepcopy(status)
+    public_events = list(events)
+    public_total = len(events)
+    if not events and public_path.is_file():
+        try:
+            previous_public = json.loads(public_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            previous_public = {}
+        if _same_public_export(previous_public, public_status):
+            public_events = copy.deepcopy(previous_public.get("recentChanges") or [])
+            previous_meta = previous_public.get("recentChangesMeta") or {}
+            public_total = int(previous_meta.get("totalDetected") or len(public_events))
+            previous_status = previous_public.get("status") or {}
+            public_status["changesThisScan"] = previous_status.get(
+                "changesThisScan", public_total
+            )
+
+    # Local current_state remains a rich diagnostic file. The public connector
+    # receives the compact, scope-limited assistant surface only.
     atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
     atomic_write_json(
-        live_dir / "chatgpt_state.json",
+        public_path,
         build_chatgpt_state(
             current_state,
-            status=status,
-            events=events,
+            status=public_status,
+            events=public_events,
+            recent_changes_total=public_total,
         ),
         compact=True,
     )
     append_changes(live_dir / "changes.jsonl", events)
-    atomic_write_json(live_dir / "status.json", status)
+    atomic_write_json(live_dir / "status.json", public_status)
 

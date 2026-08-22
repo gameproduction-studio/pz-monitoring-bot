@@ -259,9 +259,10 @@ function UI.rememberOpenContainer()
 end
 
 function UI.exportNow()
-    PZMB.Scanner.observeSelectedContainer(false)
-    local scanned = PZMB.Scanner.scanBaseLoadedSquares()
-    if scanned == 0 then PZMB.Scanner.refreshKnownContainers() end
+    if PZMB.Scanner.isPlayerNearAnyBase(15) then
+        local scanned = PZMB.Scanner.scanBaseLoadedSquares()
+        if scanned == 0 then PZMB.Scanner.refreshKnownBaseContainers() end
+    end
     PZMB.Scanner.refreshOwnedVehicles()
     PZMB.Vehicles.save()
     local ok, err = PZMB.Export.write("manual")
@@ -350,8 +351,6 @@ function UI.onWorldContextMenu(playerNum, context, worldObjects)
     else
         for _, record in ipairs(vehicleRecords) do addVehicleActions(vehiclesMenu, record) end
     end
-    menu:addOption(tr("UI_PZMB_RememberContainer"), worldObjects, UI.rememberOpenContainer)
-
     menu:addOption(tr("UI_PZMB_UpdateAll"), worldObjects, UI.exportNow)
 end
 

@@ -62,7 +62,9 @@ def runtime_container(
         "position": position or {"x": 10, "y": 11, "z": 0},
         "ownership": {
             "owned": owned,
-            "reason": "opened_by_player" if owned else "observed_only",
+            "reason": "inside_base" if owned else "observed_only",
+            "baseZoneId": "base:test" if owned else None,
+            "baseZoneName": "Test base" if owned else None,
         },
         "observation": "selected_by_player",
         "lastSeenWorldAgeHours": 100,
@@ -117,6 +119,16 @@ def test_sequential_snapshots_distinguish_income_move_food_change_and_expense():
     )
     assert [event["kind"] for event in compare_states(fourth, fifth)] == ["outgoing"]
 
+
+def test_external_containers_and_corpses_are_excluded_from_persistent_state():
+    outside = runtime_container("world:outside", [runtime_item(70, "Base.Hammer", "Hammer")], owned=False)
+    corpse = runtime_container("corpse:1", [runtime_item(71, "Base.Wallet", "Wallet")])
+    corpse["kind"] = "corpse"
+    snapshot = normalize_mod_snapshot(runtime_state(containers=[outside, corpse]))
+    assert snapshot["world"]["containers"] == []
+    assert snapshot["world"]["corpses"] == []
+    assert flatten_state(snapshot) == {}
+    assert snapshot["world"]["coverage"]["persistentScope"] == "character_bases_registered_vehicles"
 
 def test_nested_portable_container_and_human_location_are_preserved():
     paper = runtime_item(11, "Base.SheetPaper2", "Paper sheet")
@@ -209,14 +221,21 @@ def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
     assert "Events.OnPlayerUpdate" not in events
     assert "Events.EveryOneMinute" not in events
     assert "Events.EveryTenMinutes" not in events
-    assert "Events.OnContainerUpdate" not in events
+    assert "Events.OnContainerUpdate.Add(onContainerUpdate)" in events
+    assert "Events.OnTick.Add(onTick)" in events
+    assert "if not Runtime.dirty then return end" in events
+    assert "Runtime.debounceMs = 2500" not in events
+    assert "debounceMs = 2500" in events
+    assert "minimumIntervalMs = 5000" in events
+    assert "ISBaseTimedAction.pzmbOriginalPerform" in events
+    assert 'Runtime.markDirty("timed_action_completed")' in events
     assert "Events.OnPostSave.Add(onPostSave)" in events
     assert "Events.OnRefreshInventoryWindowContainers" not in events
-    assert "observeSelectedContainer(false)" in events
     assert 'if parent then customName = safeCall(container, "getCustomName", nil) end' in scanner
-    assert 'tr("UI_PZMB_RememberContainer")' in ui
-    assert "if not isNewSelection and not forceRefresh then return nil end" in scanner
-    assert "function Scanner.refreshKnownContainers()" in scanner
+    assert 'tr("UI_PZMB_RememberContainer")' not in ui
+    assert 'persistentScope = "character_bases_registered_vehicles"' in scanner
+    assert 'container.kind == "stationary" and insideConfiguredBase' in scanner
+    assert "function Scanner.refreshKnownBaseContainers()" in scanner
     assert 'PZMB.Export.write("base_set")' not in ui
 
 

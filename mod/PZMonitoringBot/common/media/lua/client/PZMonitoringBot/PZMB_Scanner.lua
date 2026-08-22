@@ -468,6 +468,12 @@ function Scanner.isPlayerNearBase(base, padding)
     return dx * dx + dy * dy <= radius * radius
 end
 
+function Scanner.isPlayerNearAnyBase(padding)
+    for _, base in ipairs(Scanner.baseZones) do
+        if Scanner.isPlayerNearBase(base, padding) then return true end
+    end
+    return false
+end
 function Scanner.refreshKnownContainers()
     local refreshed = 0
     for id, container in pairs(Scanner.containerRefs) do
@@ -485,7 +491,8 @@ function Scanner.refreshKnownBaseContainers()
     local refreshed = 0
     for id, container in pairs(Scanner.containerRefs) do
         local position = squarePosition(container)
-        if containingBase(position) then
+        local base = containingBase(position)
+        if base and Scanner.isPlayerNearBase(base, 15) then
             local ok, snapshot = pcall(Scanner.containerSnapshot, container, "base_save_refresh")
             if ok and snapshot then
                 Scanner.knownContainers[id] = snapshot
@@ -720,9 +727,13 @@ function Scanner.currentState()
     if not player then error("no active player") end
     local containers = {}
     for _, container in pairs(Scanner.knownContainers) do
-        local registeredVehicleContainer = container.kind == "vehicle"
-            and Scanner.ownedVehicleById[tostring(container.vehicleId or "")] ~= nil
-        if not registeredVehicleContainer then containers[#containers + 1] = container end
+        local ownership = container.ownership or {}
+        local insideConfiguredBase = ownership.baseZoneId ~= nil
+        -- Persistent telemetry contains only stationary storage inside saved bases.
+        -- Registered vehicle cargo is emitted through the vehicle records below.
+        if container.kind == "stationary" and insideConfiguredBase then
+            containers[#containers + 1] = container
+        end
     end
     local vehicles = {}
     for id, vehicle in pairs(Scanner.knownVehicles) do
@@ -768,9 +779,12 @@ function Scanner.currentState()
             vehicles = vehicles,
             coverage = {
                 runtimeLoadedOnly = true,
+                persistentScope = "character_bases_registered_vehicles",
                 registeredVehiclesConfigured = #Scanner.ownedVehicles,
                 registeredVehiclesLoaded = #vehicles,
-                openedContainersRememberedThisSession = true,
+                externalWorldContainersIncluded = false,
+                corpsesIncluded = false,
+                groundItemsIncluded = false,
                 baseLoadedSquaresScanned = baseLoadedSquaresScanned,
                 configuredBaseCount = #Scanner.baseZones,
                 unloadedRemoteContainersComplete = false,

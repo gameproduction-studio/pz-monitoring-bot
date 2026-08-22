@@ -21,6 +21,8 @@ def _location(item: dict[str, Any]) -> dict[str, Any]:
         "position": source.get("position"),
         "owned": bool(source.get("owned")),
         "stale": bool(source.get("stale")),
+        "scope": source.get("scope"),
+        "containerType": source.get("containerType"),
     }
 
 def _direction(dx: float, dy: float) -> str:
@@ -136,9 +138,19 @@ def _food_record(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
+def _vehicle_record(
+    vehicle: dict[str, Any],
+    current_world_age_hours: Any,
+) -> dict[str, Any]:
     observation = vehicle.get("observation") or {}
     stale = bool(observation.get("stale"))
+    last_seen = observation.get("lastSeenWorldAgeHours")
+    hours_since_last_seen = (
+        round(max(0.0, float(current_world_age_hours) - float(last_seen)), 2)
+        if isinstance(current_world_age_hours, (int, float))
+        and isinstance(last_seen, (int, float))
+        else None
+    )
     fuel = vehicle.get("fuel") or {}
     fraction = fuel.get("fraction")
     fuel_percent = round(float(fraction) * 100.0, 1) if fraction is not None else None
@@ -205,7 +217,8 @@ def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
         "scriptFullType": vehicle.get("scriptFullType"),
         "position": vehicle.get("position"),
         "stale": stale,
-        "lastSeenWorldAgeHours": observation.get("lastSeenWorldAgeHours"),
+        "lastSeenAtWorldAgeHours": last_seen,
+        "hoursSinceLastSeen": hours_since_last_seen,
         "fuel": {
             "amount": fuel.get("amount"),
             "capacity": fuel.get("capacity"),
@@ -264,8 +277,9 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    current_world_age_hours = (snapshot.get("game") or {}).get("worldAgeHours")
     vehicle_records = [
-        _vehicle_record(vehicle)
+        _vehicle_record(vehicle, current_world_age_hours)
         for vehicle in (snapshot.get("world") or {}).get("vehicles") or []
     ]
     vehicle_alerts = [
@@ -286,8 +300,8 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
                 "the installed game's active localization, not model translations."
             ),
             "ownedRule": (
-                "character inventory, container opened by player, container inside base, "
-                "or cargo of a registered vehicle"
+                "character inventory, stationary container inside a saved base, "
+                "or cargo of a registered vehicle; external world containers are excluded"
             ),
             "staleRule": (
                 "stale=true means last known contents; do not claim they are still present "
@@ -321,8 +335,8 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
         },
         "search": {
             "coverageWarning": (
-                "Only currently observed or last-known indexed items are searchable; "
-                "unexplored locations are not guaranteed sources."
+                "Search covers the character, saved-base containers, and registered "
+                "vehicles only. External world containers require an explicit future scan."
             ),
             "playerPosition": player_position,
             "items": search_index,

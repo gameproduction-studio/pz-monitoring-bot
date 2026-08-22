@@ -77,6 +77,12 @@ def test_chatgpt_state_removes_large_duplicate_views_but_keeps_facts():
     assert compact["schema"] == "pz-monitoring-bot/chatgpt-state/v2"
     assert compact["status"]["ok"] is True
     assert compact["recentChanges"] == [{"kind": "move", "itemId": "1"}]
+    assert compact["recentChangesMeta"] == {
+        "totalDetected": 1,
+        "returned": 1,
+        "limit": 100,
+        "truncated": False,
+    }
     assert compact["character"]["forename"] == "Нэйтан"
     assert "inventory" not in compact["character"]
     assert "ownedItemsByLocation" not in compact["assistantViews"]
