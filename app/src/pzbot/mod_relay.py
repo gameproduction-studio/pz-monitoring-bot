@@ -17,7 +17,11 @@ from .live_contract import (
     utc_now,
     write_live_files,
 )
-from .mod_telemetry import normalize_mod_snapshot, read_mod_telemetry
+from .mod_telemetry import (
+    normalize_mod_snapshot,
+    read_mod_telemetry,
+    restrict_to_persistent_scope,
+)
 from .settings import Settings
 from .state_diff import compare_states, flatten_state
 
@@ -28,6 +32,7 @@ def relay_once(settings: Settings) -> dict[str, Any]:
     local_state = load_local_state(settings.state_path)
     save_id = str((raw.get("save") or {}).get("id"))
     previous = previous_for_save(local_state, save_id)
+    previous = restrict_to_persistent_scope(previous)
     snapshot = normalize_mod_snapshot(raw, previous=previous)
     events = compare_states(previous, snapshot, timestamp=scan_time)
     current_state = build_current_state(snapshot, events=events, scan_time=scan_time)
@@ -42,6 +47,8 @@ def relay_once(settings: Settings) -> dict[str, Any]:
     status = {
         "schema": "pz-monitoring-bot/status/v2",
         "schemaVersion": current_state["schemaVersion"],
+        "contractRevision": 4,
+        "monitoringScope": "character_bases_registered_vehicles",
         "ok": True,
         "parsingSuccessful": True,
         "lastScanAt": scan_time,

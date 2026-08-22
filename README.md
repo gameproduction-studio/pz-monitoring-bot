@@ -14,7 +14,7 @@ before each gameplay answer.
 
 - character inventory, hands, worn and attached items;
 - nested portable containers;
-- opened world containers, corpses, and loaded containers inside the base zone;
+- stationary containers inside saved base zones; external containers, corpses, and ground loot are excluded;
 - per-save registration of keyed vehicles with rename/update/remove actions;
 - vehicle fuel, battery, engine, overall/part condition, position and cargo;
 - itemId, FullType, condition, uses, food state, and weapon ammunition;
@@ -27,9 +27,10 @@ before each gameplay answer.
 
 ## Honest search boundary
 
-Search covers observed or last-known indexed items. It does not promise loot in
-unexplored locations. A result with `last_known_stale` must be rechecked. The
-save-file chunk auditor for unloaded remote areas is a later integration stage.
+Persistent search covers only the character, stationary storage inside saved
+bases, and cargo of registered vehicles. Random world containers, corpses, and
+ground loot are intentionally not accumulated. A separate one-shot external
+search can be added later without expanding the permanent public snapshot.
 
 ## Install the test version
 
@@ -44,7 +45,6 @@ save, right-click in the world, and open `Органайзер выжившег�
 - `Мои базы` lists every zone for the current save with coordinates and radius;
 - each base submenu can rename it, scan its resources on demand, or safely delete
   only the organizer entry;
-- `Запомнить открытый контейнер` records the currently selected world container;
 - right-click a vehicle while carrying its key, then choose
   `Закрепить автомобиль за собой`;
 - `Текущее авто` and `Мои автомобили` rename, refresh, or safely forget a
@@ -53,8 +53,10 @@ save, right-click in the world, and open `Органайзер выжившег�
 
 Multiple zones such as a bunker, farm, and main home may coexist. Registered
 vehicles are scoped to the active save and tracked by vehicleId with keyId as
-supporting identity. Heavy square and vehicle scanning runs only on save or an
-explicit organizer command, never every frame.
+supporting identity. An inventory transfer, container event, manual refresh, or game save marks
+the monitor dirty; export waits 2.5 seconds, is rate-limited to once per 5
+seconds, and refreshes only a nearby saved base plus registered vehicles. The
+per-frame callback performs timestamp checks only and never scans while clean.
 
 Start the foreground relay:
 
@@ -75,7 +77,7 @@ Install the background relay once:
 It starts immediately and again at Windows sign-in. From then on the normal
 workflow is only:
 
-1. use `Обновить все записи о ресурсах` in the in-game organizer;
+1. play normally; transfers and container changes export automatically after a short debounce;
 2. the mod writes local telemetry;
 3. the background relay waits for both JSON files to stabilize;
 4. it updates four local `live` files and pushes only `chatgpt_state.json`;
@@ -92,24 +94,22 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 32 passing tests, including sequential item snapshots,
+Current result: 35 passing tests, including scoped sequential snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
-alerts, and the largest-then-nearest hiking-bag search.
+alerts, bounded journal preservation, and base-only item search.
 
 ## Ordinary ChatGPT
 
 Use [the Russian ChatGPT playbook](docs/CHATGPT_PLAYBOOK_RU.md). Give ChatGPT
 the GitHub URL for:
 
-- `live/chatgpt_state.json` (compact v2 gameplay facts, currently about 300 KB);
+- `live/chatgpt_state.json` (human-first v3 gameplay facts, limited to owned scope);
 
 `live/current_state.json`, `status.json`, and `changes.jsonl` remain local diagnostic
 files. Ordinary ChatGPT reads `chatgpt_state.json`; it embeds synchronization
 status and the most recent changes while staying below the connector limit.
 
-Before GitHub publishing, attach these files manually. Ordinary ChatGPT does
-not receive background push events; practical realtime means it rereads them
-on every user turn.
+Ordinary ChatGPT does not receive background push events; practical realtime means the relay publishes automatically and ChatGPT rereads `chatgpt_state.json` on every user turn.
 
 For a copy-paste connection check against a real snapshot, use
 [the Russian test prompt](docs/CHATGPT_TEST_PROMPT_RU.md). It includes a

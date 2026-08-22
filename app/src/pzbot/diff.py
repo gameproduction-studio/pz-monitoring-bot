@@ -76,9 +76,9 @@ def compare(old_snapshot: dict[str, Any] | None, new_snapshot: dict[str, Any], t
         events.append({"time": timestamp, "kind": kind, "itemId": item["itemId"], "fullType": item.get("fullType"), "name_ru": item.get("name_ru"), **extra})
 
     for item_id in sorted(after.keys() - before.keys()):
-        emit("incoming", after[item_id], quantityDelta=1, to=location_signature(after[item_id]))
+        emit("incoming", after[item_id], quantityDelta=1, to=location_signature(after[item_id]), interpretation="appeared_in_monitored_state", acquisitionConfirmed=False)
     for item_id in sorted(before.keys() - after.keys()):
-        emit("outgoing", before[item_id], quantityDelta=-1, from_=location_signature(before[item_id]))
+        emit("outgoing", before[item_id], quantityDelta=-1, from_=location_signature(before[item_id]), interpretation="disappeared_from_monitored_state", consumptionConfirmed=False)
     for item_id in sorted(before.keys() & after.keys()):
         old, new = before[item_id], after[item_id]
         old_location, new_location = location_signature(old), location_signature(new)
@@ -87,7 +87,7 @@ def compare(old_snapshot: dict[str, Any] | None, new_snapshot: dict[str, Any], t
         old_condition, new_condition = condition_percent(old), condition_percent(new)
         if _changed(old_condition, new_condition):
             emit("condition_change", new, old=old_condition, new=new_condition)
-        food_changes = {field: {"old": old.get(field), "new": new.get(field)} for field in MATERIAL_FOOD_FIELDS if _changed(old.get(field), new.get(field))}
+        food_changes = {field: {"old": old.get(field), "new": new.get(field)} for field in MATERIAL_FOOD_FIELDS if _changed(old.get(field), new.get(field)) and not (field == "remainingFraction" and isinstance(old.get(field), (int, float)) and float(old[field]) > 1.0)}
         if food_changes and (old.get("itemType") == "food" or new.get("itemType") == "food"):
             if old.get("freshness") != "rotten" and new.get("freshness") == "rotten":
                 kind = "food_rotted"
@@ -96,7 +96,7 @@ def compare(old_snapshot: dict[str, Any] | None, new_snapshot: dict[str, Any], t
             elif not old.get("frozen") and new.get("frozen"):
                 kind = "food_frozen"
             elif "remainingFraction" in food_changes or "currentUses" in food_changes:
-                kind = "food_consumed_partially"
+                kind = "food_quantity_decreased"
             else:
                 kind = "food_state_change"
             emit(kind, new, changes=food_changes)
@@ -109,5 +109,5 @@ def compare(old_snapshot: dict[str, Any] | None, new_snapshot: dict[str, Any], t
         if event["kind"] != "weapon_ammo_change":
             continue
         delta = event["ammoDelta"]
-        event["classification"] = "loaded" if delta > 0 and loose_delta <= -delta else "unloaded" if delta < 0 and loose_delta >= -delta else "consumed_or_fired" if delta < 0 else "source_uncertain"
+        event["classification"] = "loaded" if delta > 0 and loose_delta <= -delta else "unloaded" if delta < 0 and loose_delta >= -delta else "removed_from_weapon_source_uncertain" if delta < 0 else "source_uncertain"
     return events

@@ -11,9 +11,9 @@ from .state_diff import flatten_state
 
 def _location(item: dict[str, Any]) -> dict[str, Any]:
     source = item.get("source") or {}
-    label = source.get("containerDisplayName") or "Inventory of character"
+    label = source.get("containerDisplayName") or "Инвентарь персонажа"
     if source.get("scope") != "character" and not source.get("containerDisplayName"):
-        label = source.get("containerDisplayName") or source.get("containerType") or "World container"
+        label = source.get("containerDisplayName") or source.get("containerType") or "Контейнер мира"
     return {
         "label": label,
         "path": source.get("path"),
@@ -21,6 +21,8 @@ def _location(item: dict[str, Any]) -> dict[str, Any]:
         "position": source.get("position"),
         "owned": bool(source.get("owned")),
         "stale": bool(source.get("stale")),
+        "scope": source.get("scope"),
+        "containerType": source.get("containerType"),
     }
 
 def _direction(dx: float, dy: float) -> str:
@@ -114,6 +116,8 @@ def _food_record(item: dict[str, Any]) -> dict[str, Any]:
         "lipids": food.get("lipids"),
         "proteins": food.get("proteins"),
         "hungerChange": food.get("hungerChange"),
+        "remainingFraction": item.get("remainingFraction"),
+        "currentUses": item.get("currentUses"),
         "freshness": food.get("freshnessStage"),
         "frozen": bool(food.get("frozen")),
         "freezingTime": food.get("freezingTime"),
@@ -136,14 +140,24 @@ def _food_record(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
+def _vehicle_record(
+    vehicle: dict[str, Any],
+    current_world_age_hours: Any,
+) -> dict[str, Any]:
     observation = vehicle.get("observation") or {}
     stale = bool(observation.get("stale"))
+    last_seen = observation.get("lastSeenWorldAgeHours")
+    hours_since_last_seen = (
+        round(max(0.0, float(current_world_age_hours) - float(last_seen)), 2)
+        if isinstance(current_world_age_hours, (int, float))
+        and isinstance(last_seen, (int, float))
+        else None
+    )
     fuel = vehicle.get("fuel") or {}
     fraction = fuel.get("fraction")
     fuel_percent = round(float(fraction) * 100.0, 1) if fraction is not None else None
     alerts: list[dict[str, Any]] = []
-    if not stale and fuel_percent is not None and fuel_percent <= 25:
+    if fuel_percent is not None and fuel_percent <= 25:
         alerts.append(
             {
                 "kind": "vehicle_low_fuel",
@@ -156,7 +170,7 @@ def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
             }
         )
     battery = vehicle.get("batteryCharge")
-    if not stale and isinstance(battery, (int, float)) and float(battery) <= 0.25:
+    if isinstance(battery, (int, float)) and float(battery) <= 0.25:
         alerts.append(
             {
                 "kind": "vehicle_low_battery",
@@ -168,7 +182,7 @@ def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
     weak_parts = []
     for part in vehicle.get("parts") or []:
         condition = part.get("condition")
-        if not stale and isinstance(condition, (int, float)) and float(condition) < 40:
+        if isinstance(condition, (int, float)) and float(condition) < 40:
             weak_parts.append(
                 {
                     "partId": part.get("partId"),
@@ -195,6 +209,7 @@ def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
                 "capacity": container.get("capacity"),
                 "itemInstances": len(container.get("items") or []),
                 "stale": bool((container.get("observation") or {}).get("stale")),
+                "loadedNow": not bool((container.get("observation") or {}).get("stale")),
             }
         )
     return {
@@ -205,7 +220,14 @@ def _vehicle_record(vehicle: dict[str, Any]) -> dict[str, Any]:
         "scriptFullType": vehicle.get("scriptFullType"),
         "position": vehicle.get("position"),
         "stale": stale,
-        "lastSeenWorldAgeHours": observation.get("lastSeenWorldAgeHours"),
+        "loadedNow": not stale,
+        "stateStatus": "live_loaded" if not stale else "last_confirmed_stable_while_unloaded",
+        "stateRule_ru": (
+            "В одиночной игре сохранённые топливо, детали и груз считаются действующим "
+            "последним подтверждённым состоянием, пока автомобиль выгружен движком. "
+            "Временные показатели уточняются при следующей загрузке автомобиля."
+        ),
+        "lastSeenAtWorldAgeHours": last_seen,        "hoursSinceLastSeen": hours_since_last_seen,
         "fuel": {
             "amount": fuel.get("amount"),
             "capacity": fuel.get("capacity"),
@@ -264,8 +286,9 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    current_world_age_hours = (snapshot.get("game") or {}).get("worldAgeHours")
     vehicle_records = [
-        _vehicle_record(vehicle)
+        _vehicle_record(vehicle, current_world_age_hours)
         for vehicle in (snapshot.get("world") or {}).get("vehicles") or []
     ]
     vehicle_alerts = [
@@ -286,12 +309,16 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
                 "the installed game's active localization, not model translations."
             ),
             "ownedRule": (
-                "character inventory, container opened by player, container inside base, "
-                "or cargo of a registered vehicle"
+                "character inventory, stationary container inside a saved base, "
+                "or cargo of a registered vehicle; external world containers are excluded"
             ),
             "staleRule": (
-                "stale=true means last known contents; do not claim they are still present "
-                "without qualification."
+                "For a registered vehicle in single-player, stale=true means not loaded by "
+                "the engine now, not missing. Fuel, parts, and cargo remain the last confirmed "
+                "state; only time-dependent values need refresh."
+            ),            "presentationRule": (
+                "Use Russian name_ru in user-facing answers. Never list itemId or fullType "
+                "unless the user explicitly asks for technical identifiers."
             ),
             "recipeRule": (
                 "cookingCandidates prove cookability only. Exact multi-ingredient recipes "
@@ -317,12 +344,15 @@ def build_assistant_views(snapshot: dict[str, Any]) -> dict[str, Any]:
         "vehicles": {
             "owned": vehicle_records,
             "alerts": vehicle_alerts,
-            "staleRule": "A stale vehicle is last known state; do not present alerts as current.",
+            "staleRule": (
+                "A registered unloaded vehicle remains visible with its last confirmed fuel, "
+                "parts, and cargo. Treat only time-dependent values as needing refresh."
+            ),
         },
         "search": {
             "coverageWarning": (
-                "Only currently observed or last-known indexed items are searchable; "
-                "unexplored locations are not guaranteed sources."
+                "Search covers the character, saved-base containers, and registered "
+                "vehicles only. External world containers require an explicit future scan."
             ),
             "playerPosition": player_position,
             "items": search_index,

@@ -238,9 +238,23 @@ def compare_states(
         )
 
     for item_id in sorted(after.keys() - before.keys()):
-        emit("incoming", after[item_id], quantityDelta=1, to=location_signature(after[item_id]))
+        emit(
+            "incoming",
+            after[item_id],
+            quantityDelta=1,
+            to=location_signature(after[item_id]),
+            interpretation="appeared_in_monitored_state",
+            acquisitionConfirmed=False,
+        )
     for item_id in sorted(before.keys() - after.keys()):
-        emit("outgoing", before[item_id], quantityDelta=-1, **{"from": location_signature(before[item_id])})
+        emit(
+            "outgoing",
+            before[item_id],
+            quantityDelta=-1,
+            **{"from": location_signature(before[item_id])},
+            interpretation="disappeared_from_monitored_state",
+            consumptionConfirmed=False,
+        )
 
     for item_id in sorted(before.keys() & after.keys()):
         old = before[item_id]
@@ -264,6 +278,11 @@ def compare_states(
             field: {"old": old.get(field), "new": new.get(field)}
             for field in FOOD_FIELDS
             if _changed(old.get(field), new.get(field))
+            and not (
+                field == "remainingFraction"
+                and isinstance(old.get(field), (int, float))
+                and float(old[field]) > 1.0
+            )
         }
         if changes and (old.get("itemType") == "food" or new.get("itemType") == "food"):
             if old.get("freshness") != "rotten" and new.get("freshness") == "rotten":
@@ -273,7 +292,7 @@ def compare_states(
             elif not old.get("frozen") and new.get("frozen"):
                 kind = "food_frozen"
             elif "remainingFraction" in changes or "currentUses" in changes:
-                kind = "food_consumed_partially"
+                kind = "food_quantity_decreased"
             else:
                 kind = "food_state_change"
             emit(kind, new, changes=changes)
@@ -303,7 +322,7 @@ def compare_states(
             if delta > 0 and loose_delta <= -delta
             else "unloaded"
             if delta < 0 and loose_delta >= -delta
-            else "consumed_or_fired"
+            else "removed_from_weapon_source_uncertain"
             if delta < 0
             else "source_uncertain"
         )

@@ -101,8 +101,17 @@ def _normalized_item(item: dict[str, Any]) -> dict[str, Any]:
     }
     food = copy.deepcopy(item.get("food"))
     if food:
-        result.update(
-            itemType="food",
+        base_hunger = food.get("baseHunger")
+        hunger_change = food.get("hungerChange")
+        if (
+            isinstance(base_hunger, (int, float))
+            and isinstance(hunger_change, (int, float))
+            and abs(float(base_hunger)) > 1e-9
+        ):
+            result["remainingFraction"] = round(
+                max(0.0, min(1.0, float(hunger_change) / float(base_hunger))), 6
+            )
+        result.update(            itemType="food",
             food=food,
             age=food.get("ageDays"),
             offAge=food.get("daysFresh"),
@@ -209,12 +218,41 @@ def _stale_observation(value: Any) -> dict[str, Any]:
     return observation
 
 
+def restrict_to_persistent_scope(
+    snapshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Drop legacy external-world records before comparison or carry-forward."""
+    if snapshot is None:
+        return None
+    result = copy.deepcopy(snapshot)
+    registered_ids = {
+        str(record.get("vehicleId"))
+        for record in result.get("ownedVehicles") or []
+        if record.get("vehicleId") is not None
+    }
+    world = result.setdefault("world", {})
+    world["containers"] = [
+        container
+        for container in world.get("containers") or []
+        if container.get("kind") == "stationary"
+        and (container.get("ownership") or {}).get("baseZoneId") is not None
+    ]
+    world["vehicles"] = [
+        vehicle
+        for vehicle in world.get("vehicles") or []
+        if str(vehicle.get("vehicleId")) in registered_ids
+    ]
+    world["corpses"] = []
+    world["groundItems"] = []
+    return result
+
 def normalize_mod_snapshot(
     raw: dict[str, Any],
     *,
     previous: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Convert runtime telemetry to the internal instance-level snapshot contract."""
+    previous = restrict_to_persistent_scope(previous)
     world_age_hours = (raw.get("game") or {}).get("worldAgeHours")
     character = copy.deepcopy(raw.get("character") or {})
     inventory = character.setdefault("inventory", {})
@@ -222,19 +260,29 @@ def normalize_mod_snapshot(
         _normalized_item(item) for item in inventory.get("items") or []
     ]
     raw_world = raw.get("world") or {}
-    current_containers = [
-        _normalized_container(container, world_age_hours)
-        for container in raw_world.get("containers") or []
-    ]
-    current_vehicles = [
-        _normalized_vehicle(vehicle, world_age_hours)
-        for vehicle in raw_world.get("vehicles") or []
-    ]
     registered_vehicles = copy.deepcopy(raw.get("ownedVehicles") or [])
     registered_ids = {
         str(record.get("vehicleId")) for record in registered_vehicles
         if record.get("vehicleId") is not None
     }
+
+    def monitored_base_container(container: dict[str, Any]) -> bool:
+        ownership = container.get("ownership") or {}
+        return (
+            container.get("kind") == "stationary"
+            and ownership.get("baseZoneId") is not None
+        )
+
+    current_containers = [
+        _normalized_container(container, world_age_hours)
+        for container in raw_world.get("containers") or []
+        if monitored_base_container(container)
+    ]
+    current_vehicles = [
+        _normalized_vehicle(vehicle, world_age_hours)
+        for vehicle in raw_world.get("vehicles") or []
+        if str(vehicle.get("vehicleId")) in registered_ids
+    ]
 
     known_now = _item_ids(inventory["items"])
     for container in current_containers:
@@ -253,20 +301,11 @@ def normalize_mod_snapshot(
         previous_by_id = {
             str(container.get("containerId")): container
             for container in (previous.get("world") or {}).get("containers") or []
+            if monitored_base_container(container)
         }
-        for current in current_containers:
-            old = previous_by_id.get(str(current.get("containerId")))
-            old_ownership = (old or {}).get("ownership") or {}
-            current_ownership = current.get("ownership") or {}
-            if (
-                old_ownership.get("owned")
-                and str(old_ownership.get("reason", "")).startswith("opened")
-                and not current_ownership.get("owned")
-            ):
-                current["ownership"] = copy.deepcopy(old_ownership)
-                current["ownership"]["reason"] = "opened_previous_session"
-                current["ownership"]["confidence"] = "exact_persisted_locally"
         for old in (previous.get("world") or {}).get("containers") or []:
+            if not monitored_base_container(old):
+                continue
             if str(old.get("containerId")) in current_container_ids:
                 continue
             stale = copy.deepcopy(old)
@@ -302,6 +341,14 @@ def normalize_mod_snapshot(
         if (vehicle.get("observation") or {}).get("stale")
     )
     coverage = copy.deepcopy(raw_world.get("coverage") or {})
+    coverage.update(
+        {
+            "persistentScope": "character_bases_registered_vehicles",
+            "externalWorldContainersIncluded": False,
+            "corpsesIncluded": False,
+            "groundItemsIncluded": False,
+        }
+    )
     coverage["vehicles"] = {
         "registered": len(registered_ids),
         "loadedThisSnapshot": len(current_vehicles) - stale_vehicle_count,
@@ -319,11 +366,7 @@ def normalize_mod_snapshot(
             "containers": current_containers,
             "groundItems": [],
             "vehicles": current_vehicles,
-            "corpses": [
-                container
-                for container in current_containers
-                if container.get("kind") == "corpse"
-            ],
+            "corpses": [],
             "coverage": coverage,
         },
         "baseZones": copy.deepcopy(raw.get("baseZones") or []),

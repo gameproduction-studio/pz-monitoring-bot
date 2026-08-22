@@ -20,30 +20,37 @@ def backpack(item_id: int, capacity: int):
     )
 
 
-def test_search_can_choose_largest_then_nearest_known_backpack():
+def test_search_uses_only_character_base_and_registered_vehicle_items():
     small_near = runtime_container(
         "world:small",
         [backpack(601, 22)],
-        owned=False,
+        owned=True,
         stale_name="Hall shelf",
         position={"x": 2, "y": 0, "z": 0},
     )
     large_far = runtime_container(
         "world:large-far",
         [backpack(602, 28)],
-        owned=False,
-        stale_name="Wardrobe in northern house",
+        owned=True,
+        stale_name="Wardrobe in base",
         position={"x": 12, "y": 0, "z": 0},
     )
     large_near = runtime_container(
         "world:large-near",
         [backpack(603, 28)],
-        owned=False,
-        stale_name="Corpse by the road",
+        owned=True,
+        stale_name="Base storage by the road",
         position={"x": 3, "y": 4, "z": 0},
     )
+    external_larger = runtime_container(
+        "world:outside",
+        [backpack(604, 40)],
+        owned=False,
+        stale_name="Untracked shop shelf",
+        position={"x": 1, "y": 1, "z": 0},
+    )
     snapshot = normalize_mod_snapshot(
-        runtime_state(containers=[small_near, large_far, large_near])
+        runtime_state(containers=[small_near, large_far, large_near, external_larger])
     )
     search = build_assistant_views(snapshot)["search"]
     hiking_bags = [
@@ -51,6 +58,7 @@ def test_search_can_choose_largest_then_nearest_known_backpack():
         for item in search["items"]
         if item["fullType"] == "Base.Bag_BigHikingBag"
     ]
+    assert {item["itemId"] for item in hiking_bags} == {"601", "602", "603"}
     largest_capacity = max(item["capacity"] for item in hiking_bags)
     best = min(
         (item for item in hiking_bags if item["capacity"] == largest_capacity),
@@ -59,6 +67,6 @@ def test_search_can_choose_largest_then_nearest_known_backpack():
     assert best["itemId"] == "603"
     assert best["distanceTiles"] == 5
     assert best["directionFromPlayer"] == "SE"
-    assert best["location"]["label"] == "Corpse by the road"
-    assert best["availability"] == "observed_world"
-    assert "unexplored" in search["coverageWarning"]
+    assert best["location"]["label"] == "Base storage by the road"
+    assert best["availability"] == "owned_storage"
+    assert "External world containers" in search["coverageWarning"]

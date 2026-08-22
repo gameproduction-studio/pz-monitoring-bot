@@ -21,6 +21,10 @@ if ($Process.CommandLine -notlike "*$Expected*") {
     throw "PID $RelayPid does not belong to pz monitoring bot; refusing to stop it."
 }
 
-Stop-Process -Id $RelayPid
+$TaskKill = Join-Path $env:SystemRoot "System32\taskkill.exe"
+& $TaskKill /PID $RelayPid /T /F | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to stop pz monitoring bot relay process tree (PID $RelayPid)."
+}
 Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
 Write-Host "pz monitoring bot relay stopped."

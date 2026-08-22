@@ -116,12 +116,9 @@ def build_current_state(
         },
         "save": copy.deepcopy(snapshot["save"]),
         "ownership": {
-            "policy": "opened_or_inside_base_zone_or_registered_vehicle",
+            "policy": "character_or_inside_saved_base_or_registered_vehicle",
             "baseZones": copy.deepcopy(snapshot.get("baseZones") or []),
-            "openedInferenceWarning": (
-                "explored usually means opened in Build 42, but some game systems "
-                "can set it automatically; inspect ownership.confidence."
-            ),
+            "persistentScope": "character_bases_registered_vehicles",
         },
         "summary": {
             "physicalItemsVisible": len(items),
@@ -170,6 +167,7 @@ def build_chatgpt_state(
     *,
     status: dict[str, Any] | None = None,
     events: list[dict[str, Any]] | None = None,
+    recent_changes_total: int | None = None,
 ) -> dict[str, Any]:
     """Create a small connector-safe view without losing gameplay facts."""
     character = copy.deepcopy(current_state.get("character") or {})
@@ -205,42 +203,94 @@ def build_chatgpt_state(
                 location.get("position"),
                 location.get("owned"),
                 location.get("stale"),
+                location.get("scope"),
+                location.get("containerType"),
             ]
         )
         return location_id
 
     search = views.get("search") or {}
+    raw_search_items = list(search.get("items") or [])
+
+    resource_groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in raw_search_items:
+        full_type = str(item.get("fullType") or "unknown")
+        name_ru = str(item.get("name_ru") or full_type)
+        key = (name_ru, full_type)
+        record = resource_groups.setdefault(
+            key,
+            {
+                "name_ru": name_ru,
+                "quantity": 0,
+                "onCharacter": 0,
+                "locations": {},
+                "conditionPercentMin": None,
+                "conditionPercentMax": None,
+                "fullType": full_type,
+            },
+        )
+        record["quantity"] += 1
+        if item.get("availability") == "in_character_inventory":
+            record["onCharacter"] += 1
+        location = item.get("location") or {}
+        location_key = str(
+            location.get("containerId") or location.get("path") or location.get("label")
+        )
+        location_record = record["locations"].setdefault(
+            location_key,
+            {
+                "name_ru": location.get("label"),
+                "quantity": 0,
+                "position": location.get("position"),
+                "containerId": location.get("containerId"),
+                "scope": location.get("scope"),
+                "loadedNow": not bool(location.get("stale")),
+            },
+        )
+        location_record["quantity"] += 1
+        condition = item.get("condition")
+        condition_max = item.get("conditionMax")
+        if (
+            isinstance(condition, (int, float))
+            and isinstance(condition_max, (int, float))
+            and condition_max
+        ):
+            percent = round(float(condition) / float(condition_max) * 100.0, 1)
+            minimum = record["conditionPercentMin"]
+            maximum = record["conditionPercentMax"]
+            record["conditionPercentMin"] = percent if minimum is None else min(minimum, percent)
+            record["conditionPercentMax"] = percent if maximum is None else max(maximum, percent)
+
+    resource_items: list[dict[str, Any]] = []
+    for record in resource_groups.values():
+        record["locations"] = sorted(
+            record["locations"].values(),
+            key=lambda value: (str(value.get("name_ru")), str(value.get("containerId"))),
+        )
+        resource_items.append(record)
+    resource_items.sort(key=lambda value: (str(value.get("name_ru")), str(value.get("fullType"))))
+    resource_view = {
+        "instruction_ru": (
+            "Основная сводка для ответов пользователю. Показывай name_ru и количество; "
+            "itemId и fullType называй только по прямому запросу."
+        ),
+        "items": resource_items,
+    }
+
     search_fields = [
-        "itemId",
-        "fullType",
-        "name_ru",
-        "category",
-        "condition",
-        "conditionMax",
-        "isPortableContainer",
-        "capacity",
-        "weightReduction",
-        "availability",
-        "distanceTiles",
-        "directionFromPlayer",
-        "locationId",
+        "itemId", "fullType", "name_ru", "category", "condition", "conditionMax",
+        "isPortableContainer", "capacity", "weightReduction", "availability",
+        "distanceTiles", "directionFromPlayer", "locationId",
     ]
     search_rows = []
-    for item in search.get("items") or []:
+    for item in raw_search_items:
         search_rows.append(
             [
-                item.get("itemId"),
-                item.get("fullType"),
-                item.get("name_ru"),
-                item.get("category"),
-                item.get("condition"),
-                item.get("conditionMax"),
-                item.get("isPortableContainer"),
-                item.get("capacity"),
-                item.get("weightReduction"),
-                item.get("availability"),
-                item.get("distanceTiles"),
-                item.get("directionFromPlayer"),
+                item.get("itemId"), item.get("fullType"), item.get("name_ru"),
+                item.get("category"), item.get("condition"), item.get("conditionMax"),
+                item.get("isPortableContainer"), item.get("capacity"),
+                item.get("weightReduction"), item.get("availability"),
+                item.get("distanceTiles"), item.get("directionFromPlayer"),
                 intern_location(item.get("location")),
             ]
         )
@@ -248,84 +298,129 @@ def build_chatgpt_state(
     search["items"] = search_rows
 
     food = views.get("food") or {}
-    food.pop("highCalorieOwned", None)
-    food.pop("cookingCandidates", None)
-    food_fields = [
-        "itemId",
-        "fullType",
-        "name_ru",
-        "caloriesReportedByGame",
-        "carbohydrates",
-        "lipids",
-        "proteins",
-        "hungerChange",
-        "freshness",
-        "frozen",
-        "freezingTime",
-        "cooked",
-        "burnt",
-        "recipeOptions",
-        "rotten",
-        "cookable",
-        "dangerousUncooked",
-        "foodType",
-        "evolvedRecipeName",
-        "replaceOnCooked",
-        "hoursUntilStaleAtRoomTemperature",
-        "hoursUntilRottenAtRoomTemperature",
-        "locationId",
-    ]
-    for group in ("owned", "observedOnly"):
-        rows = []
-        for item in food.get(group) or []:
-            rows.append(
-                [
-                    item.get("itemId"),
-                    item.get("fullType"),
-                    item.get("name_ru"),
-                    item.get("caloriesReportedByGame"),
-                    item.get("carbohydrates"),
-                    item.get("lipids"),
-                    item.get("proteins"),
-                    item.get("hungerChange"),
-                    item.get("freshness"),
-                    item.get("frozen"),
-                    item.get("freezingTime"),
-                    item.get("cooked"),
-                    item.get("burnt"),
-                    item.get("recipeOptions"),
-                    item.get("rotten"),
-                    item.get("cookable"),
-                    item.get("dangerousUncooked"),
-                    item.get("foodType"),
-                    item.get("evolvedRecipeName"),
-                    item.get("replaceOnCooked"),
-                    item.get("hoursUntilStaleAtRoomTemperature"),
-                    item.get("hoursUntilRottenAtRoomTemperature"),
-                    intern_location(item.get("location")),
-                ]
-            )
-        food[group] = rows
-    food["fields"] = food_fields
+    food_groups: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for item in food.get("owned") or []:
+        location = item.get("location") or {}
+        key = (
+            item.get("fullType"), item.get("name_ru"), item.get("freshness"),
+            bool(item.get("frozen")), bool(item.get("cooked")),
+            bool(item.get("burnt")), bool(item.get("rotten")),
+            location.get("containerId") or location.get("path"),
+        )
+        record = food_groups.setdefault(
+            key,
+            {
+                "name_ru": item.get("name_ru"),
+                "quantity": 0,
+                "freshness": item.get("freshness"),
+                "frozen": bool(item.get("frozen")),
+                "freezingTime": item.get("freezingTime"),
+                "cooked": bool(item.get("cooked")),
+                "burnt": bool(item.get("burnt")),
+                "rotten": bool(item.get("rotten")),
+                "cookable": bool(item.get("cookable")),
+                "dangerousUncooked": bool(item.get("dangerousUncooked")),
+                "remainingFractionMin": item.get("remainingFraction"),
+                "remainingFractionMax": item.get("remainingFraction"),
+                "caloriesTotalReportedByGame": 0.0,
+                "hoursUntilStaleAtRoomTemperature": item.get(
+                    "hoursUntilStaleAtRoomTemperature"
+                ),
+                "hoursUntilRottenAtRoomTemperature": item.get(
+                    "hoursUntilRottenAtRoomTemperature"
+                ),
+                "location": {
+                    "name_ru": location.get("label"),
+                    "position": location.get("position"),
+                    "containerId": location.get("containerId"),
+                    "storageType": location.get("containerType"),
+                    "loadedNow": not bool(location.get("stale")),
+                },
+                "recipeOptions": item.get("recipeOptions") or [],
+                "replaceOnCooked": item.get("replaceOnCooked") or [],
+                "fullType": item.get("fullType"),
+            },
+        )
+        record["quantity"] += 1
+        record["caloriesTotalReportedByGame"] += float(
+            item.get("caloriesReportedByGame") or 0
+        )
+        fraction = item.get("remainingFraction")
+        if isinstance(fraction, (int, float)):
+            minimum = record.get("remainingFractionMin")
+            maximum = record.get("remainingFractionMax")
+            record["remainingFractionMin"] = fraction if minimum is None else min(minimum, fraction)
+            record["remainingFractionMax"] = fraction if maximum is None else max(maximum, fraction)
+        for field in (
+            "hoursUntilStaleAtRoomTemperature",
+            "hoursUntilRottenAtRoomTemperature",
+        ):
+            value = item.get(field)
+            current = record.get(field)
+            if isinstance(value, (int, float)):
+                record[field] = value if not isinstance(current, (int, float)) else min(current, value)
 
-    views["locations"] = {
+    food_summary = list(food_groups.values())
+    for record in food_summary:
+        record["caloriesTotalReportedByGame"] = round(
+            record["caloriesTotalReportedByGame"], 2
+        )
+    food_summary.sort(
+        key=lambda value: (
+            not bool(value.get("rotten")),
+            value.get("hoursUntilRottenAtRoomTemperature") is None,
+            value.get("hoursUntilRottenAtRoomTemperature") or float("inf"),
+            str(value.get("name_ru")),
+        )
+    )
+    food_view = {
+        "instruction_ru": (
+            "Используй эту сводку для еды: здесь сохранены русское название, свежесть, "
+            "заморозка, приготовленность, оставшаяся доля, калории и место хранения."
+        ),
+        "summary": food_summary,
+        "highCalorieSummary": sorted(
+            food_summary,
+            key=lambda value: -float(value.get("caloriesTotalReportedByGame") or 0),
+        )[:15],
+        "cookingSummary": [
+            value
+            for value in food_summary
+            if value.get("cookable")
+            or value.get("recipeOptions")
+            or value.get("replaceOnCooked")
+        ],
+        "spoilageAlerts": food.get("spoilageAlerts") or [],
+        "totalCaloriesReportedByGame": food.get("totalCaloriesReportedByGame"),
+        "technicalInstanceDetails": food.get("owned") or [],
+    }
+
+    locations_view = {
         "fields": [
-            "locationId",
-            "label",
-            "path",
-            "containerId",
-            "position",
-            "owned",
-            "stale",
+            "locationId", "label", "path", "containerId", "position", "owned",
+            "stale", "scope", "containerType",
         ],
         "items": location_rows,
     }
     contract = views.get("contract") or {}
-    contract["compactRows"] = (
-        "search.items and food owned/observedOnly are arrays. Map each value "
-        "by the matching fields array and resolve locationId through locations."
+    contract["readOrder"] = (
+        "Read resources.items, food.summary, vehicles.owned, and recentChanges first. "
+        "Technical indexes are fallback only."
     )
-    views["contract"] = contract
+    contract["compactRows"] = (
+        "Only search.items and locations.items are compact arrays. Map them through their "
+        "fields arrays. Human resource and food summaries are normal named objects."
+    )
+    views = {
+        "contract": contract,
+        "resources": resource_view,
+        "food": food_view,
+        "vehicles": views.get("vehicles") or {},
+        "search": search,
+        "locations": locations_view,
+        "ownedItemCount": views.get("ownedItemCount"),
+        "observedOnlyItemCount": views.get("observedOnlyItemCount"),
+    }
 
     world = current_state.get("world") or {}
 
@@ -346,30 +441,42 @@ def build_chatgpt_state(
             for value in values
         ]
 
+    recent_limit = 100
+    recent_changes = copy.deepcopy((events or [])[-recent_limit:])
+    detected_change_count = (
+        len(events or []) if recent_changes_total is None else recent_changes_total
+    )
+    recent_changes_meta = {
+        "totalDetected": detected_change_count,
+        "returned": len(recent_changes),
+        "limit": recent_limit,
+        "truncated": detected_change_count > len(recent_changes),
+    }
     state = {
-        "schema": "pz-monitoring-bot/chatgpt-state/v2",
-        "status": copy.deepcopy(status or {}),
+        "schema": "pz-monitoring-bot/chatgpt-state/v3",
         "schemaVersion": current_state.get("schemaVersion"),
+        "status": copy.deepcopy(status or {}),
         "updatedAt": current_state.get("updatedAt"),
         "game": copy.deepcopy(current_state.get("game") or {}),
         "save": copy.deepcopy(current_state.get("save") or {}),
+        "assistantViews": views,
+        "recentChanges": recent_changes,
+        "recentChangesMeta": recent_changes_meta,
+        "character": character,
         "ownership": copy.deepcopy(current_state.get("ownership") or {}),
         "summary": copy.deepcopy(current_state.get("summary") or {}),
-        "countsByFullType": copy.deepcopy(
-            current_state.get("countsByFullType") or {}
-        ),
-        "ownedCountsByFullType": copy.deepcopy(
-            current_state.get("ownedCountsByFullType") or {}
-        ),
-        "character": character,
         "worldIndex": {
             "coverage": copy.deepcopy(world.get("coverage") or {}),
             "containers": container_index(world.get("containers") or []),
             "corpses": container_index(world.get("corpses") or []),
         },
-        "assistantViews": views,
         "source": copy.deepcopy(current_state.get("source") or {}),
-        "recentChanges": copy.deepcopy((events or [])[-100:]),
+        "technicalCountsByFullType": copy.deepcopy(
+            current_state.get("countsByFullType") or {}
+        ),
+        "technicalOwnedCountsByFullType": copy.deepcopy(
+            current_state.get("ownedCountsByFullType") or {}
+        ),
     }
     return _without_none_values(state)
 
@@ -450,6 +557,23 @@ def append_changes(path: Path, events: list[dict[str, Any]]) -> None:
     os.replace(temporary, path)
 
 
+def _same_public_export(
+    previous_public: dict[str, Any],
+    status: dict[str, Any],
+) -> bool:
+    previous_status = previous_public.get("status") or {}
+    previous_save = (previous_status.get("activeSave") or {}).get("id")
+    current_save = (status.get("activeSave") or {}).get("id")
+    previous_sequence = (previous_status.get("modStatus") or {}).get("sequence")
+    current_sequence = (status.get("modStatus") or {}).get("sequence")
+    return (
+        previous_save == current_save
+        and previous_sequence is not None
+        and previous_sequence == current_sequence
+        and previous_status.get("contractRevision") == status.get("contractRevision")
+        and previous_status.get("monitoringScope") == status.get("monitoringScope")
+    )
+
 def write_live_files(
     live_dir: Path,
     *,
@@ -458,19 +582,40 @@ def write_live_files(
     events: list[dict[str, Any]],
 ) -> None:
     live_dir.mkdir(parents=True, exist_ok=True)
-    # current_state can contain more than a thousand rich item records. Compact
-    # encoding plus omission of the duplicate flat list keeps it below the
-    # ordinary ChatGPT source-size limit without discarding world facts.
+    public_path = live_dir / "chatgpt_state.json"
+    public_status = copy.deepcopy(status)
+    public_events = list(events)
+    public_total = len(events)
+    reuse_previous_public = False
+    if not events and public_path.is_file():
+        try:
+            previous_public = json.loads(public_path.read_text(encoding="utf-8-sig"))
+        except (OSError, json.JSONDecodeError):
+            previous_public = {}
+        if _same_public_export(previous_public, public_status):
+            reuse_previous_public = True
+            public_events = copy.deepcopy(previous_public.get("recentChanges") or [])
+            previous_meta = previous_public.get("recentChangesMeta") or {}
+            public_total = int(previous_meta.get("totalDetected") or len(public_events))
+            previous_status = previous_public.get("status") or {}
+            public_status["changesThisScan"] = previous_status.get(
+                "changesThisScan", public_total
+            )
+
+    # Local current_state remains a rich diagnostic file. The public connector
+    # receives the compact, scope-limited assistant surface only.
     atomic_write_json(live_dir / "current_state.json", current_state, compact=True)
-    atomic_write_json(
-        live_dir / "chatgpt_state.json",
-        build_chatgpt_state(
-            current_state,
-            status=status,
-            events=events,
-        ),
-        compact=True,
-    )
+    if not reuse_previous_public:
+        atomic_write_json(
+            public_path,
+            build_chatgpt_state(
+                current_state,
+                status=public_status,
+                events=public_events,
+                recent_changes_total=public_total,
+            ),
+            compact=True,
+        )
     append_changes(live_dir / "changes.jsonl", events)
-    atomic_write_json(live_dir / "status.json", status)
+    atomic_write_json(live_dir / "status.json", public_status)
 

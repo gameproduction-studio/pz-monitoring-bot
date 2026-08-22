@@ -54,6 +54,12 @@ def test_incoming_and_outgoing_are_physical_item_events():
     events = compare_states(old, new, timestamp="2026-01-01T00:00:00+00:00")
     assert kinds(events) == ["incoming", "outgoing"]
     assert {event["itemId"] for event in events} == {"1", "2"}
+    incoming = next(event for event in events if event["kind"] == "incoming")
+    outgoing = next(event for event in events if event["kind"] == "outgoing")
+    assert incoming["interpretation"] == "appeared_in_monitored_state"
+    assert incoming["acquisitionConfirmed"] is False
+    assert outgoing["interpretation"] == "disappeared_from_monitored_state"
+    assert outgoing["consumptionConfirmed"] is False
 
 
 def test_same_item_id_moved_is_not_income_or_expense():
@@ -97,6 +103,25 @@ def test_condition_food_thaw_rot_and_partial_use():
     assert "food_rotted" in kinds(events)
 
 
+def test_partial_food_use_does_not_claim_consumption_cause():
+    old = snapshot(
+        character=[
+            grouped(
+                "Base.Food",
+                25,
+                itemType="food",
+                remainingFraction=1.0,
+                currentUses=2,
+            )
+        ]
+    )
+    new = copy.deepcopy(old)
+    new["character"]["inventory"]["items"][0].update(
+        remainingFraction=0.5,
+        currentUses=1,
+    )
+    assert kinds(compare_states(old, new)) == ["food_quantity_decreased"]
+
 def test_ammo_loaded_is_classified_from_instance_ids():
     weapon = grouped("Base.Shotgun", 30, itemType="weapon", currentAmmoCount=0)
     shell1 = grouped("Base.ShotgunShells", 31)
@@ -123,3 +148,20 @@ def test_nested_container_content_is_flattened_with_parent_id():
     assert items["41"]["parentItemIds"] == ["40"]
     assert items["41"]["source"]["path"].endswith("item:40")
 
+
+
+def test_legacy_invalid_food_fraction_does_not_emit_fake_change():
+    old = snapshot(
+        character=[
+            grouped(
+                "Base.Rice",
+                50,
+                itemType="food",
+                remainingFraction=60.0,
+                currentUses=60,
+            )
+        ]
+    )
+    new = copy.deepcopy(old)
+    new["character"]["inventory"]["items"][0]["remainingFraction"] = 1.0
+    assert compare_states(old, new) == []
