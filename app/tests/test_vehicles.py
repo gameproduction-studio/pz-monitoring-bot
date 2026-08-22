@@ -90,6 +90,9 @@ def test_vehicle_unloaded_is_carried_forward_as_stale_without_false_expense():
     assert second["world"]["vehicles"][0]["observation"]["stale"] is True
     assert compare_states(first, second) == []
     assert "901" in flatten_state(second)
+    vehicle_view = build_assistant_views(second)["vehicles"]["owned"][0]
+    assert vehicle_view["lastSeenAtWorldAgeHours"] == 100
+    assert vehicle_view["hoursSinceLastSeen"] == 0.0
 
 
 def test_vehicle_removal_does_not_carry_old_snapshot():
