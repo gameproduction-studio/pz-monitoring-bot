@@ -10,7 +10,7 @@ OpenAI API не используется. Перед каждым ответом
 >
 > Постоянный снимок намеренно охватывает только персонажа, стационарные контейнеры внутри сохранённых баз и закреплённые автомобили. Внешние шкафы, трупы, земля и незакреплённые машины отсутствуют по проектному решению, а не считаются пустыми.
 >
-> В схеме v2 `assistantViews.search.items` — строки-массивы. Сопоставляй позиции с `assistantViews.search.fields`, а `locationId` — с `assistantViews.locations.fields/items`. Для еды аналогично используй `assistantViews.food.fields`.
+> В схеме v3 сначала читай `overview`, `character`, `bases`, `recentChanges` и `assistantViews.vehicles`. Затем используй `assistantViews.food.summary` и `assistantViews.resources.items`.
 >
 > Различай `in_character_inventory`, `owned_storage` и `last_known_stale`. `stale=true` означает последнее известное состояние. Для машины не путай `lastSeenAtWorldAgeHours` (момент наблюдения) с `hoursSinceLastSeen` (сколько игровых часов прошло).
 >

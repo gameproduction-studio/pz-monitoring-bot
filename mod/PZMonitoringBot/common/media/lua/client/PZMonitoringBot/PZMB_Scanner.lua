@@ -676,17 +676,43 @@ function Scanner.observeVehicle(vehicle, observation)
 end
 
 function Scanner.refreshOwnedVehicles()
-    local cell = getCell()
-    if not cell then return 0 end
-    local vehicles = safeCall(cell, "getVehicles", nil)
-    local count = safeCall(vehicles, "size", 0)
     local refreshed = 0
-    for index = 0, count - 1 do
-        local vehicle = safeCall(vehicles, "get", nil, index)
-        if vehicle and ownedVehicleRecord(vehicle) then
-            local ok, snapshot = pcall(Scanner.observeVehicle, vehicle, "registered_vehicle_refresh")
-            if ok and snapshot then refreshed = refreshed + 1 end
+    local seen = {}
+
+    local function refresh(vehicle, observation)
+        if not vehicle then return end
+        local id = tostring(safeCall(vehicle, "getId", ""))
+        if id == "" or seen[id] then return end
+        seen[id] = true
+        if not ownedVehicleRecord(vehicle) then return end
+        local ok, snapshot = pcall(
+            Scanner.observeVehicle,
+            vehicle,
+            observation or "registered_vehicle_refresh"
+        )
+        if ok and snapshot then refreshed = refreshed + 1 end
+    end
+
+    -- Build 42.20.3 does not expose every loaded vehicle through
+    -- IsoCell:getVehicles() on the client. The player vehicle is authoritative.
+    local player = getPlayer()
+    if player then refresh(safeCall(player, "getVehicle", nil), "player_vehicle") end
+
+    -- Resolve every registered id directly when the global client API is present.
+    if getVehicleById then
+        for _, record in ipairs(Scanner.ownedVehicles) do
+            local numericId = tonumber(record.vehicleId) or record.vehicleId
+            local ok, vehicle = pcall(getVehicleById, numericId)
+            if ok then refresh(vehicle, "registered_vehicle_by_id") end
         end
+    end
+
+    -- Keep the older cell-list path as a compatibility fallback.
+    local cell = getCell()
+    local vehicles = cell and safeCall(cell, "getVehicles", nil) or nil
+    local count = safeCall(vehicles, "size", 0)
+    for index = 0, count - 1 do
+        refresh(safeCall(vehicles, "get", nil, index), "registered_vehicle_cell")
     end
     return refreshed
 end

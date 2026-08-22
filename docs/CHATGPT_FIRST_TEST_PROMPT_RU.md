@@ -31,7 +31,7 @@ https://github.com/gameproduction-studio/pz-monitoring-bot/blob/main/live/chatgp
 - JSON — источник фактов; память беседы хранит только цели и сюжет.
 - itemId — конкретный экземпляр, fullType — тип предмета.
 - Русские названия бери только из name_ru/nameLocalized.
-- В схеме v2 assistantViews.search.items и строки еды — массивы. Сначала сопоставь их с соседним fields. locationId разрешай через assistantViews.locations.fields/items.
+- В схеме v3 сначала читай overview, character, bases, recentChanges и assistantViews.vehicles. Затем используй assistantViews.food.summary и assistantViews.resources.items. Дублирующие технические индексы намеренно не публикуются.
 - move — тот же itemId в новом месте; это не приход и не расход.
 - incoming означает «появился в контролируемой области». При acquisitionConfirmed=false не утверждай, что предмет найден или добыт.
 - outgoing означает «исчез из контролируемой области». При consumptionConfirmed=false не утверждай, что он съеден: он мог быть использован, уничтожен или выброшен наружу.

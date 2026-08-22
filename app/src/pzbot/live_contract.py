@@ -384,7 +384,14 @@ def build_chatgpt_state(
             key=lambda value: -float(value.get("caloriesTotalReportedByGame") or 0),
         )[:15],
         "cookingSummary": [
-            value
+            {
+                "name_ru": value.get("name_ru"),
+                "quantity": value.get("quantity"),
+                "cookable": value.get("cookable"),
+                "dangerousUncooked": value.get("dangerousUncooked"),
+                "location": value.get("location"),
+                "recipeOptions": value.get("recipeOptions") or [],
+            }
             for value in food_summary
             if value.get("cookable")
             or value.get("recipeOptions")
@@ -392,7 +399,6 @@ def build_chatgpt_state(
         ],
         "spoilageAlerts": food.get("spoilageAlerts") or [],
         "totalCaloriesReportedByGame": food.get("totalCaloriesReportedByGame"),
-        "technicalInstanceDetails": food.get("owned") or [],
     }
 
     locations_view = {
@@ -404,20 +410,19 @@ def build_chatgpt_state(
     }
     contract = views.get("contract") or {}
     contract["readOrder"] = (
-        "Read resources.items, food.summary, vehicles.owned, and recentChanges first. "
-        "Technical indexes are fallback only."
+        "Read overview, character, bases, recentChanges, vehicles.owned, food.summary, "
+        "and resources.items in that order."
     )
     contract["compactRows"] = (
-        "Only search.items and locations.items are compact arrays. Map them through their "
-        "fields arrays. Human resource and food summaries are normal named objects."
+        "The public file intentionally omits duplicate instance indexes. Human resource, "
+        "food, base, and vehicle summaries are normal named objects."
     )
+    vehicle_view = views.get("vehicles") or {}
     views = {
         "contract": contract,
-        "resources": resource_view,
+        "vehicles": vehicle_view,
         "food": food_view,
-        "vehicles": views.get("vehicles") or {},
-        "search": search,
-        "locations": locations_view,
+        "resources": resource_view,
         "ownedItemCount": views.get("ownedItemCount"),
         "observedOnlyItemCount": views.get("observedOnlyItemCount"),
     }
@@ -437,6 +442,12 @@ def build_chatgpt_state(
                 "vehicleId": value.get("vehicleId"),
                 "vehicleName": value.get("vehicleName"),
                 "itemInstances": len(value.get("items") or []),
+                "loadedNow": not bool((value.get("observation") or {}).get("stale")),
+                "stateStatus": (
+                    "last_confirmed_stable_while_unloaded"
+                    if (value.get("observation") or {}).get("stale")
+                    else "live_loaded"
+                ),
             }
             for value in values
         ]
@@ -452,6 +463,76 @@ def build_chatgpt_state(
         "limit": recent_limit,
         "truncated": detected_change_count > len(recent_changes),
     }
+    container_rows = container_index(world.get("containers") or [])
+    ownership = copy.deepcopy(current_state.get("ownership") or {})
+    base_summaries = []
+    for zone in ownership.get("baseZones") or []:
+        zone_id = zone.get("id")
+        zone_containers = [
+            row for row in container_rows
+            if (row.get("ownership") or {}).get("baseZoneId") == zone_id
+        ]
+        loaded_count = sum(1 for row in zone_containers if row.get("loadedNow"))
+        base_summaries.append(
+            {
+                "id": zone_id,
+                "name": zone.get("name"),
+                "center": {
+                    "x": zone.get("x"),
+                    "y": zone.get("y"),
+                    "z": zone.get("z"),
+                },
+                "radius": zone.get("radius"),
+                "minZ": zone.get("minZ"),
+                "maxZ": zone.get("maxZ"),
+                "containerCount": len(zone_containers),
+                "itemInstances": sum(
+                    int(row.get("itemInstances") or 0) for row in zone_containers
+                ),
+                "loadedContainersNow": loaded_count,
+                "lastKnownContainers": len(zone_containers) - loaded_count,
+                "stateStatus": (
+                    "live_loaded" if loaded_count
+                    else "last_confirmed_stable_while_unloaded" if zone_containers
+                    else "not_scanned"
+                ),
+                "containers": zone_containers,
+            }
+        )
+
+    vehicle_briefs = []
+    for vehicle in vehicle_view.get("owned") or []:
+        vehicle_briefs.append(
+            {
+                "name": vehicle.get("name"),
+                "displayName": vehicle.get("displayName"),
+                "scriptFullType": vehicle.get("scriptFullType"),
+                "position": vehicle.get("position"),
+                "loadedNow": vehicle.get("loadedNow"),
+                "stateStatus": vehicle.get("stateStatus"),
+                "fuel": vehicle.get("fuel"),
+                "batteryChargePercent": vehicle.get("batteryChargePercent"),
+                "overallConditionPercent": vehicle.get("overallConditionPercent"),
+                "engine": vehicle.get("engine"),
+                "cargoContainers": vehicle.get("cargoContainers") or [],
+                "alerts": vehicle.get("alerts") or [],
+            }
+        )
+
+    overview = {
+        "instruction_ru": (
+            "Читай этот блок первым. Он всегда содержит персонажа, базы и автомобили "+
+            "до длинных списков еды и ресурсов."
+        ),
+        "character": copy.deepcopy(character),
+        "bases": base_summaries,
+        "vehicles": vehicle_briefs,
+        "coverage": copy.deepcopy(world.get("coverage") or {}),
+        "resourceGroups": len(resource_items),
+        "foodGroups": len(food_summary),
+        "recentChanges": recent_changes_meta,
+    }
+
     state = {
         "schema": "pz-monitoring-bot/chatgpt-state/v3",
         "schemaVersion": current_state.get("schemaVersion"),
@@ -459,24 +540,15 @@ def build_chatgpt_state(
         "updatedAt": current_state.get("updatedAt"),
         "game": copy.deepcopy(current_state.get("game") or {}),
         "save": copy.deepcopy(current_state.get("save") or {}),
-        "assistantViews": views,
+        "overview": overview,
+        "character": character,
+        "bases": base_summaries,
         "recentChanges": recent_changes,
         "recentChangesMeta": recent_changes_meta,
-        "character": character,
-        "ownership": copy.deepcopy(current_state.get("ownership") or {}),
+        "assistantViews": views,
+        "ownership": ownership,
         "summary": copy.deepcopy(current_state.get("summary") or {}),
-        "worldIndex": {
-            "coverage": copy.deepcopy(world.get("coverage") or {}),
-            "containers": container_index(world.get("containers") or []),
-            "corpses": container_index(world.get("corpses") or []),
-        },
         "source": copy.deepcopy(current_state.get("source") or {}),
-        "technicalCountsByFullType": copy.deepcopy(
-            current_state.get("countsByFullType") or {}
-        ),
-        "technicalOwnedCountsByFullType": copy.deepcopy(
-            current_state.get("ownedCountsByFullType") or {}
-        ),
     }
     return _without_none_values(state)
 

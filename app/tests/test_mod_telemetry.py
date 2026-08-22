@@ -221,7 +221,7 @@ def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
     assert "Events.OnPlayerUpdate" not in events
     assert "Events.EveryOneMinute" not in events
     assert "Events.EveryTenMinutes" not in events
-    assert "Events.OnContainerUpdate.Add(onContainerUpdate)" in events
+    assert "Events.OnContainerUpdate.Add(onContainerUpdate)" not in events
     assert "Events.OnTick.Add(onTick)" in events
     assert "if not Runtime.dirty then return end" in events
     assert "Runtime.debounceMs = 2500" not in events
@@ -238,6 +238,8 @@ def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
     assert 'persistentScope = "character_bases_registered_vehicles"' in scanner
     assert 'container.kind == "stationary" and insideConfiguredBase' in scanner
     assert "function Scanner.refreshKnownBaseContainers()" in scanner
+    assert 'safeCall(player, "getVehicle", nil)' in scanner
+    assert "pcall(getVehicleById, numericId)" in scanner
     assert 'PZMB.Export.write("base_set")' not in ui
 
 

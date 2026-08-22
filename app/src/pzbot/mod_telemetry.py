@@ -265,6 +265,10 @@ def normalize_mod_snapshot(
         str(record.get("vehicleId")) for record in registered_vehicles
         if record.get("vehicleId") is not None
     }
+    registered_by_id = {
+        str(record.get("vehicleId")): record for record in registered_vehicles
+        if record.get("vehicleId") is not None
+    }
 
     def monitored_base_container(container: dict[str, Any]) -> bool:
         ownership = container.get("ownership") or {}
@@ -321,6 +325,10 @@ def normalize_mod_snapshot(
             if old_id in current_vehicle_ids or old_id not in registered_ids:
                 continue
             stale_vehicle = copy.deepcopy(old)
+            registration = registered_by_id.get(old_id) or {}
+            for field in ("name", "displayName", "scriptFullType", "scriptName", "keyId"):
+                if registration.get(field) is not None:
+                    stale_vehicle[field] = copy.deepcopy(registration[field])
             stale_vehicle["observation"] = _stale_observation(
                 stale_vehicle.get("observation")
             )
@@ -340,6 +348,11 @@ def normalize_mod_snapshot(
         for vehicle in current_vehicles
         if (vehicle.get("observation") or {}).get("stale")
     )
+    stale_container_count = sum(
+        1
+        for container in current_containers
+        if (container.get("observation") or {}).get("stale")
+    )
     coverage = copy.deepcopy(raw_world.get("coverage") or {})
     coverage.update(
         {
@@ -349,6 +362,13 @@ def normalize_mod_snapshot(
             "groundItemsIncluded": False,
         }
     )
+    coverage["bases"] = {
+        "registered": len(raw.get("baseZones") or []),
+        "containersVisible": len(current_containers),
+        "loadedThisSnapshot": len(current_containers) - stale_container_count,
+        "lastKnownStale": stale_container_count,
+        "unloadedBaseContainersCarriedForward": True,
+    }
     coverage["vehicles"] = {
         "registered": len(registered_ids),
         "loadedThisSnapshot": len(current_vehicles) - stale_vehicle_count,

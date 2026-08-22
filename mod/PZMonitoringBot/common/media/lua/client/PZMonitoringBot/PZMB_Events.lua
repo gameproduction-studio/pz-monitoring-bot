@@ -57,10 +57,6 @@ local function onGameStart()
     Runtime.markDirty("game_started")
 end
 
-local function onContainerUpdate()
-    Runtime.markDirty("container_changed")
-end
-
 local function onTick()
     if not Runtime.dirty then return end
     local now = nowMillis()
@@ -88,7 +84,6 @@ end
 
 Events.OnGameStart.Add(onGameStart)
 Events.OnPostSave.Add(onPostSave)
-Events.OnContainerUpdate.Add(onContainerUpdate)
 Events.OnTick.Add(onTick)
 
 return Runtime
