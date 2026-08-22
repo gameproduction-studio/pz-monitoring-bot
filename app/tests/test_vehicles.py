@@ -128,6 +128,24 @@ def test_vehicle_fuel_part_and_move_events_and_chat_alerts():
     }
 
 
+def test_reused_runtime_vehicle_id_cannot_impersonate_registered_vehicle():
+    raw = runtime_state()
+    impostor = vehicle()
+    impostor["keyId"] = 9999
+    impostor["scriptFullType"] = "Base.PickUpTruck"
+    raw["world"]["vehicles"] = [impostor]
+    raw["ownedVehicles"] = [
+        {
+            "vehicleId": "77",
+            "keyId": 1234,
+            "scriptFullType": "Base.Van",
+            "name": "Фургон",
+        }
+    ]
+    snapshot = normalize_mod_snapshot(raw)
+    assert snapshot["world"]["vehicles"] == []
+
+
 def test_lua_vehicle_registry_is_event_driven_and_key_gated():
     root = Path(__file__).parents[2]
     lua_root = root / "mod/PZMonitoringBot/common/media/lua/client/PZMonitoringBot"
@@ -137,6 +155,13 @@ def test_lua_vehicle_registry_is_event_driven_and_key_gated():
     events = (lua_root / "PZMB_Events.lua").read_text(encoding="utf-8")
 
     assert 'Vehicles.fileName = "pzmb_vehicles.txt"' in vehicles
+    assert 'safeCall(vehicle, "getSqlId", -1)' in vehicles
+    assert 'function Vehicles.findBySqlId(sqlId)' in vehicles
+    assert 'function Vehicles.findByKeyId(keyId)' in vehicles
+    assert 'function Vehicles.bindIdentity(vehicle, record)' in vehicles
+    assert 'return Vehicles.findById(vehicleId(vehicle))' not in vehicles
+    assert 'local stableId = sqlId >= 0' in scanner
+    assert 'trackingId = trackingId' in scanner
     assert "local function containerHasKeyId(container, keyId, seen)" in vehicles
     assert 'safeCall(container, "haveThisKeyId", false, keyId)' in vehicles
     assert 'safeCall(item, "getKeyId", -1)' in vehicles

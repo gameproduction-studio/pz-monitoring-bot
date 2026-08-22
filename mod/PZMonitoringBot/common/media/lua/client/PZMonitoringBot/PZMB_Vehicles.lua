@@ -57,6 +57,18 @@ local function vehicleNames(vehicle)
     return tostring(localized), tostring(safeCall(script, "getFullType", scriptName)), scriptName
 end
 
+local function vehicleSqlId(vehicle)
+    local value = tonumber(safeCall(vehicle, "getSqlId", -1)) or -1
+    if value < 0 then return nil end
+    return value
+end
+
+local function vehicleKeyId(vehicle)
+    local value = tonumber(safeCall(vehicle, "getKeyId", -1)) or -1
+    if value < 0 then return nil end
+    return value
+end
+
 local function normalizeRecord(values)
     if #values < 10 then return nil, nil end
     local key = unescape(values[1])
@@ -72,6 +84,7 @@ local function normalizeRecord(values)
         x = tonumber(values[8]),
         y = tonumber(values[9]),
         z = tonumber(values[10]),
+        sqlId = tonumber(values[11]),
     }
 end
 
@@ -102,7 +115,7 @@ end
 function Vehicles.save()
     local writer = getFileWriter(Vehicles.fileName, true, false)
     if not writer then error("cannot write " .. Vehicles.fileName) end
-    writer:write("# save|vehicleId|keyId|name|displayName|scriptFullType|scriptName|x|y|z\r\n")
+    writer:write("# save|vehicleId|keyId|name|displayName|scriptFullType|scriptName|x|y|z|sqlId\r\n")
     local keys = {}
     for key, _ in pairs(Vehicles.records) do keys[#keys + 1] = key end
     table.sort(keys)
@@ -116,7 +129,7 @@ function Vehicles.save()
                 escape(key), escape(record.vehicleId), tostring(record.keyId or -1),
                 escape(record.name), escape(record.displayName), escape(record.scriptFullType),
                 escape(record.scriptName), tostring(record.x or 0), tostring(record.y or 0),
-                tostring(record.z or 0),
+                tostring(record.z or 0), tostring(record.sqlId or -1),
             }, "|"))
             writer:write("\r\n")
         end
@@ -142,8 +155,69 @@ function Vehicles.findById(id)
     return nil
 end
 
+function Vehicles.findBySqlId(sqlId)
+    sqlId = tonumber(sqlId)
+    if not sqlId or sqlId < 0 then return nil end
+    for _, record in ipairs(Vehicles.currentRecords()) do
+        if tonumber(record.sqlId) == sqlId then return record end
+    end
+    return nil
+end
+
+function Vehicles.findByKeyId(keyId)
+    keyId = tonumber(keyId)
+    if not keyId or keyId < 0 then return nil end
+    for _, record in ipairs(Vehicles.currentRecords()) do
+        if tonumber(record.keyId) == keyId then return record end
+    end
+    return nil
+end
+
 function Vehicles.findByVehicle(vehicle)
-    return Vehicles.findById(vehicleId(vehicle))
+    if not vehicle then return nil end
+    local record = Vehicles.findBySqlId(vehicleSqlId(vehicle))
+    if record then return record end
+    record = Vehicles.findByKeyId(vehicleKeyId(vehicle))
+    if record then return record end
+
+    -- getId() is a session-local network id in Build 42 and may be reused
+    -- after restart. Use it only when the saved vehicle signature agrees.
+    record = Vehicles.findById(vehicleId(vehicle))
+    if not record then return nil end
+    local _, scriptFullType = vehicleNames(vehicle)
+    local recordKeyId = tonumber(record.keyId) or -1
+    local liveKeyId = vehicleKeyId(vehicle) or -1
+    if record.scriptFullType ~= scriptFullType then return nil end
+    if recordKeyId >= 0 and liveKeyId >= 0 and recordKeyId ~= liveKeyId then return nil end
+    return record
+end
+
+function Vehicles.bindIdentity(vehicle, record)
+    record = record or Vehicles.findByVehicle(vehicle)
+    if not vehicle or not record then return false end
+    local changed = false
+    local id = vehicleId(vehicle)
+    local sqlId = vehicleSqlId(vehicle)
+    if id and tostring(record.vehicleId) ~= id then
+        record.vehicleId = id
+        changed = true
+    end
+    if sqlId and tonumber(record.sqlId) ~= sqlId then
+        record.sqlId = sqlId
+        changed = true
+    end
+    local x = safeCall(vehicle, "getX", record.x)
+    local y = safeCall(vehicle, "getY", record.y)
+    local z = safeCall(vehicle, "getZ", record.z)
+    if record.x ~= x or record.y ~= y or record.z ~= z then
+        record.x, record.y, record.z = x, y, z
+        changed = true
+    end
+    if changed then
+        Vehicles.save()
+        Vehicles.applyCurrentSave()
+    end
+    return changed
 end
 
 local function containerHasKeyId(container, keyId, seen)
@@ -185,7 +259,7 @@ end
 function Vehicles.register(vehicle)
     local id = vehicleId(vehicle)
     if not id then return false, nil, "invalid_vehicle" end
-    local existing = Vehicles.findById(id)
+    local existing = Vehicles.findByVehicle(vehicle)
     if existing then return true, existing, false end
     if not Vehicles.playerHasKey(vehicle) then return false, nil, "missing_key" end
 
@@ -195,6 +269,7 @@ function Vehicles.register(vehicle)
     local record = {
         vehicleId = id,
         keyId = tonumber(safeCall(vehicle, "getKeyId", -1)) or -1,
+        sqlId = vehicleSqlId(vehicle),
         name = getText("UI_PZMB_VehicleDefaultName", displayName, tostring(#records + 1)),
         displayName = displayName,
         scriptFullType = scriptFullType,
@@ -240,9 +315,7 @@ end
 function Vehicles.updatePosition(vehicle)
     local record = Vehicles.findByVehicle(vehicle)
     if not record then return false end
-    record.x = safeCall(vehicle, "getX", record.x)
-    record.y = safeCall(vehicle, "getY", record.y)
-    record.z = safeCall(vehicle, "getZ", record.z)
+    Vehicles.bindIdentity(vehicle, record)
     return true
 end
 

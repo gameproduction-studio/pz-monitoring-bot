@@ -284,10 +284,14 @@ local function containerIdentity(container)
 
     local vehicle = safeCall(container, "getVehicle", nil)
     if vehicle then
-        local vehicleId = tostring(safeCall(vehicle, "getId", "unknown"))
+        local sqlId = tonumber(safeCall(vehicle, "getSqlId", -1)) or -1
+        local keyId = tonumber(safeCall(vehicle, "getKeyId", -1)) or -1
+        local runtimeId = tostring(safeCall(vehicle, "getId", "unknown"))
+        local stableId = sqlId >= 0 and ("sql-" .. tostring(sqlId))
+            or (keyId >= 0 and ("key-" .. tostring(keyId)) or ("runtime-" .. runtimeId))
         local part = safeCall(container, "getVehiclePart", nil)
         local partId = tostring(safeCall(part, "getId", containerType))
-        return "vehicle:" .. vehicleId .. ":" .. partId
+        return "vehicle:" .. stableId .. ":" .. partId
     end
 
     local parent = safeCall(container, "getParent", nil)
@@ -327,8 +331,15 @@ end
 
 local function ownedVehicleRecord(vehicle)
     if not vehicle then return nil end
+    if PZMB.Vehicles and PZMB.Vehicles.findByVehicle then
+        return PZMB.Vehicles.findByVehicle(vehicle)
+    end
     local id = tostring(safeCall(vehicle, "getId", ""))
-    return Scanner.ownedVehicleById[id]
+    local record = Scanner.ownedVehicleById[id]
+    if not record then return nil end
+    local keyId = tonumber(safeCall(vehicle, "getKeyId", -1)) or -1
+    if tonumber(record.keyId) and tonumber(record.keyId) ~= keyId then return nil end
+    return record
 end
 
 function Scanner.containerSnapshot(container, observation)
@@ -454,8 +465,16 @@ end
 function Scanner.setOwnedVehicles(records)
     Scanner.ownedVehicles = records or {}
     Scanner.ownedVehicleById = {}
+    Scanner.ownedVehicleByKeyId = {}
+    Scanner.ownedVehicleBySqlId = {}
     for _, record in ipairs(Scanner.ownedVehicles) do
         Scanner.ownedVehicleById[tostring(record.vehicleId)] = record
+        if tonumber(record.keyId) and tonumber(record.keyId) >= 0 then
+            Scanner.ownedVehicleByKeyId[tostring(record.keyId)] = record
+        end
+        if tonumber(record.sqlId) and tonumber(record.sqlId) >= 0 then
+            Scanner.ownedVehicleBySqlId[tostring(record.sqlId)] = record
+        end
     end
 end
 
@@ -592,7 +611,14 @@ end
 function Scanner.vehicleSnapshot(vehicle, observation)
     local record = ownedVehicleRecord(vehicle)
     if not record then return nil end
+    if PZMB.Vehicles and PZMB.Vehicles.bindIdentity then
+        PZMB.Vehicles.bindIdentity(vehicle, record)
+    end
     local id = tostring(safeCall(vehicle, "getId", record.vehicleId))
+    local sqlId = tonumber(safeCall(vehicle, "getSqlId", record.sqlId or -1)) or -1
+    local keyId = tonumber(safeCall(vehicle, "getKeyId", record.keyId or -1)) or -1
+    local trackingId = sqlId >= 0 and ("sql:" .. tostring(sqlId))
+        or ("key:" .. tostring(keyId) .. ":" .. tostring(record.scriptFullType or "unknown"))
     local script = safeCall(vehicle, "getScript", nil)
     local parts = {}
     local containers = {}
@@ -632,7 +658,9 @@ function Scanner.vehicleSnapshot(vehicle, observation)
     record.x, record.y, record.z = position.x, position.y, position.z
     return {
         vehicleId = id,
-        keyId = safeCall(vehicle, "getKeyId", record.keyId),
+        trackingId = trackingId,
+        sqlId = sqlId >= 0 and sqlId or nil,
+        keyId = keyId,
         name = record.name,
         displayName = localizedVehicleName(vehicle),
         scriptFullType = tostring(safeCall(script, "getFullType", record.scriptFullType or "unknown")),
@@ -670,8 +698,8 @@ end
 function Scanner.observeVehicle(vehicle, observation)
     local snapshot = Scanner.vehicleSnapshot(vehicle, observation)
     if not snapshot then return nil end
-    Scanner.knownVehicles[tostring(snapshot.vehicleId)] = snapshot
-    Scanner.vehicleRefs[tostring(snapshot.vehicleId)] = vehicle
+    Scanner.knownVehicles[tostring(snapshot.trackingId or snapshot.vehicleId)] = snapshot
+    Scanner.vehicleRefs[tostring(snapshot.trackingId or snapshot.vehicleId)] = vehicle
     return snapshot
 end
 
@@ -762,14 +790,14 @@ function Scanner.currentState()
         end
     end
     local vehicles = {}
-    for id, vehicle in pairs(Scanner.knownVehicles) do
-        if Scanner.ownedVehicleById[tostring(id)] then vehicles[#vehicles + 1] = vehicle end
+    for _, vehicle in pairs(Scanner.knownVehicles) do
+        vehicles[#vehicles + 1] = vehicle
     end
     table.sort(containers, function(left, right)
         return tostring(left.containerId) < tostring(right.containerId)
     end)
     table.sort(vehicles, function(left, right)
-        return tostring(left.vehicleId) < tostring(right.vehicleId)
+        return tostring(left.trackingId or left.vehicleId) < tostring(right.trackingId or right.vehicleId)
     end)
 
     local world = getWorld()

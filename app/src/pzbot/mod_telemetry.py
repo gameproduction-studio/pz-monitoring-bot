@@ -218,6 +218,30 @@ def _stale_observation(value: Any) -> dict[str, Any]:
     return observation
 
 
+def _matches_registered_vehicle(
+    vehicle: dict[str, Any], records: list[dict[str, Any]]
+) -> bool:
+    for record in records:
+        vehicle_sql = vehicle.get("sqlId")
+        record_sql = record.get("sqlId")
+        if (
+            vehicle_sql not in (None, -1, "-1")
+            and str(vehicle_sql) == str(record_sql)
+        ):
+            return True
+        vehicle_key = vehicle.get("keyId")
+        record_key = record.get("keyId")
+        vehicle_script = vehicle.get("scriptFullType") or vehicle.get("scriptName")
+        record_script = record.get("scriptFullType") or record.get("scriptName")
+        if (
+            vehicle_key not in (None, -1, "-1")
+            and str(vehicle_key) == str(record_key)
+            and (not vehicle_script or not record_script or vehicle_script == record_script)
+        ):
+            return True
+    return False
+
+
 def restrict_to_persistent_scope(
     snapshot: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -225,11 +249,7 @@ def restrict_to_persistent_scope(
     if snapshot is None:
         return None
     result = copy.deepcopy(snapshot)
-    registered_ids = {
-        str(record.get("vehicleId"))
-        for record in result.get("ownedVehicles") or []
-        if record.get("vehicleId") is not None
-    }
+    registered_vehicles = result.get("ownedVehicles") or []
     world = result.setdefault("world", {})
     world["containers"] = [
         container
@@ -240,7 +260,7 @@ def restrict_to_persistent_scope(
     world["vehicles"] = [
         vehicle
         for vehicle in world.get("vehicles") or []
-        if str(vehicle.get("vehicleId")) in registered_ids
+        if _matches_registered_vehicle(vehicle, registered_vehicles)
     ]
     world["corpses"] = []
     world["groundItems"] = []
@@ -261,14 +281,6 @@ def normalize_mod_snapshot(
     ]
     raw_world = raw.get("world") or {}
     registered_vehicles = copy.deepcopy(raw.get("ownedVehicles") or [])
-    registered_ids = {
-        str(record.get("vehicleId")) for record in registered_vehicles
-        if record.get("vehicleId") is not None
-    }
-    registered_by_id = {
-        str(record.get("vehicleId")): record for record in registered_vehicles
-        if record.get("vehicleId") is not None
-    }
 
     def monitored_base_container(container: dict[str, Any]) -> bool:
         ownership = container.get("ownership") or {}
@@ -285,7 +297,7 @@ def normalize_mod_snapshot(
     current_vehicles = [
         _normalized_vehicle(vehicle, world_age_hours)
         for vehicle in raw_world.get("vehicles") or []
-        if str(vehicle.get("vehicleId")) in registered_ids
+        if _matches_registered_vehicle(vehicle, registered_vehicles)
     ]
 
     known_now = _item_ids(inventory["items"])
@@ -322,10 +334,20 @@ def normalize_mod_snapshot(
         }
         for old in (previous.get("world") or {}).get("vehicles") or []:
             old_id = str(old.get("vehicleId"))
-            if old_id in current_vehicle_ids or old_id not in registered_ids:
+            if (
+                old_id in current_vehicle_ids
+                or not _matches_registered_vehicle(old, registered_vehicles)
+            ):
                 continue
             stale_vehicle = copy.deepcopy(old)
-            registration = registered_by_id.get(old_id) or {}
+            registration = next(
+                (
+                    record
+                    for record in registered_vehicles
+                    if _matches_registered_vehicle(old, [record])
+                ),
+                {},
+            )
             for field in ("name", "displayName", "scriptFullType", "scriptName", "keyId"):
                 if registration.get(field) is not None:
                     stale_vehicle[field] = copy.deepcopy(registration[field])
@@ -370,7 +392,7 @@ def normalize_mod_snapshot(
         "unloadedBaseContainersCarriedForward": True,
     }
     coverage["vehicles"] = {
-        "registered": len(registered_ids),
+        "registered": len(registered_vehicles),
         "loadedThisSnapshot": len(current_vehicles) - stale_vehicle_count,
         "lastKnownStale": stale_vehicle_count,
         "unloadedVehiclesCarriedForward": True,
