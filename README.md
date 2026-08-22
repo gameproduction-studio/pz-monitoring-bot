@@ -54,10 +54,13 @@ save, right-click in the world, and open `Органайзер выжившег�
 
 Multiple zones such as a bunker, farm, and main home may coexist. Registered
 vehicles are scoped to the active save and tracked by vehicleId with keyId as
-supporting identity. An inventory transfer, container event, manual refresh, or game save marks
-the monitor dirty; export waits 2.5 seconds, is rate-limited to once per 5
-seconds, and refreshes only a nearby saved base plus registered vehicles. The
-per-frame callback performs timestamp checks only and never scans while clean.
+supporting identity.
+
+For stable gameplay, the mod never scans, serializes, or writes telemetry in the
+background and does not hook inventory transfers or per-frame events. Use
+`Обновить все записи о ресурсах` when you want to publish a new complete
+snapshot. The external relay notices that snapshot and pushes it automatically.
+A short pause is possible only while the requested snapshot is being built.
 
 Start the foreground relay:
 
