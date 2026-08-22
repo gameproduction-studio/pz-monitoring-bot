@@ -239,6 +239,9 @@ def test_lua_runtime_is_event_driven_and_never_polls_every_frame():
     assert 'container.kind == "stationary" and insideConfiguredBase' in scanner
     assert "function Scanner.refreshKnownBaseContainers()" in scanner
     assert 'safeCall(player, "getVehicle", nil)' in scanner
+    assert "square:getMovingObjects()" in scanner
+    assert 'instanceof(movingObject, "BaseVehicle")' in scanner
+    assert 'Scanner.observeVehicle(movingObject, "loaded_base_zone")' in scanner
     assert "pcall(getVehicleById, numericId)" in scanner
     assert 'PZMB.Export.write("base_set")' not in ui
 

@@ -547,6 +547,13 @@ function Scanner.scanBaseLoadedSquares(zoneId)
                                 for index = 0, staticObjects:size() - 1 do
                                     scanObjectContainers(staticObjects:get(index), "loaded_base_zone")
                                 end
+                                local movingObjects = square:getMovingObjects()
+                                for index = 0, movingObjects:size() - 1 do
+                                    local movingObject = movingObjects:get(index)
+                                    if movingObject and instanceof(movingObject, "BaseVehicle") and Scanner.observeVehicle then
+                                        Scanner.observeVehicle(movingObject, "loaded_base_zone")
+                                    end
+                                end
                             end
                         end
                     end
