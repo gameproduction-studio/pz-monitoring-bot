@@ -278,6 +278,7 @@ def build_public_files(
         "food": "live/chatgpt/food.json",
         "changes": "live/chatgpt/changes.json",
         "resources": "live/chatgpt/resources.json",
+        "calculations": "live/chatgpt/calculations.json",
     }
 
     files["overview.json"] = {
@@ -576,6 +577,76 @@ def build_public_files(
         "resourcePages": resource_refs,
     }
 
+    calculations = copy.deepcopy(current_state.get("supplyCalculations") or {})
+    calculation_status = copy.deepcopy((public_state.get("status") or {}).get("calculations") or {})
+    calculation_inventory = calculations.get("inventory") or {}
+    duplicate_groups = list(calculation_inventory.pop("duplicateGroups", []) or [])
+    calculation_food = calculations.get("food") or {}
+    high_calorie_items = list(calculation_food.pop("highCalorieItems", []) or [])
+    disposal_items = list(calculation_food.pop("compostOrDisposalItems", []) or [])
+    calculation_recipes = calculations.get("recipes") or {}
+    craftable_recipes = list(calculation_recipes.pop("craftableNowExact", []) or [])
+    nearly_craftable = list(calculation_recipes.pop("nearlyCraftable", []) or [])
+    all_cooking_recipes = list(calculation_recipes.pop("allCookingRecipes", []) or [])
+    evolved_dishes = list(calculation_recipes.pop("evolvedDishOptions", []) or [])
+
+    calculation_page_specs = [
+        ("calculation-duplicates", "pz-monitoring-bot/calculation-duplicates/v1", duplicate_groups,
+         "Повторяющиеся ресурсы: официальное русское название и точное количество."),
+        ("calculation-food", "pz-monitoring-bot/calculation-food/v1", high_calorie_items,
+         "Съедобные продукты по убыванию известных игровых калорий."),
+        ("calculation-disposal", "pz-monitoring-bot/calculation-disposal/v1", disposal_items,
+         "Отходы и компост: не предлагай их есть или спасать."),
+        ("calculation-craftable", "pz-monitoring-bot/calculation-craftable/v1", craftable_recipes,
+         "Рецепты, для которых программа точно видит все явно описанные входы."),
+        ("calculation-near", "pz-monitoring-bot/calculation-near/v1", nearly_craftable,
+         "Почти доступные рецепты и недостающие группы ингредиентов."),
+        ("calculation-recipes", "pz-monitoring-bot/calculation-recipes/v1", all_cooking_recipes,
+         "Полный проверенный каталог рецептов готовки из установленного билда."),
+        ("calculation-evolved", "pz-monitoring-bot/calculation-evolved/v1", evolved_dishes,
+         "Составные блюда и доступные высококалорийные ингредиенты."),
+    ]
+    calculation_refs: dict[str, list[str]] = {}
+    for prefix, schema, records, instruction in calculation_page_specs:
+        refs = []
+        pages = _page_records(
+            schema=schema,
+            snapshot=snapshot,
+            records=records,
+            instruction_ru=instruction,
+        )
+        for index, payload in enumerate(pages, start=1):
+            name = f"{prefix}-{index:03d}.json"
+            files[name] = payload
+            refs.append(f"live/chatgpt/{name}")
+        calculation_refs[prefix] = refs
+
+    files["calculations.json"] = {
+        "schema": "pz-monitoring-bot/chatgpt-calculations/v1",
+        "snapshot": snapshot,
+        "instruction_ru": (
+            "Это результаты команды «Сделать расчёты». Используй их только когда "
+            "status.ready=true и status.currentForSnapshot=true. Для вопроса о максимально "
+            "калорийном блюде сначала открой evolvedDishPages и craftableRecipePages; "
+            "не выдавай сумму ингредиентов за точную калорийность готовой порции."
+        ),
+        "status": calculation_status,
+        "createdAt": calculations.get("createdAt"),
+        "requestId": calculations.get("requestId"),
+        "saveId": calculations.get("saveId"),
+        "snapshotSequence": calculations.get("snapshotSequence"),
+        "game": calculations.get("game") or {},
+        "inventory": calculation_inventory,
+        "food": calculation_food,
+        "recipes": calculation_recipes,
+        "duplicatePages": calculation_refs["calculation-duplicates"],
+        "highCalorieFoodPages": calculation_refs["calculation-food"],
+        "disposalPages": calculation_refs["calculation-disposal"],
+        "craftableRecipePages": calculation_refs["calculation-craftable"],
+        "nearlyCraftablePages": calculation_refs["calculation-near"],
+        "allCookingRecipePages": calculation_refs["calculation-recipes"],
+        "evolvedDishPages": calculation_refs["calculation-evolved"],
+    }
     entries = []
     for name, payload in sorted(files.items()):
         content = _encoded(payload)

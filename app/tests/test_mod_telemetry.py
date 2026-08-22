@@ -222,7 +222,9 @@ def test_lua_runtime_never_scans_or_exports_in_background():
     assert "Events.EveryOneMinute" not in events
     assert "Events.EveryTenMinutes" not in events
     assert "Events.OnContainerUpdate.Add(onContainerUpdate)" not in events
-    assert "Events.OnTick.Add" not in events
+    assert "Events.OnTick.Add(onAnalysisTick)" in events
+    assert "Events.OnTick.Remove(onAnalysisTick)" in events
+    assert "now - (wait.lastCheckEpochMs or 0) < 1000" in events
     assert "Events.OnPostSave.Add" not in events
     assert "scanBaseLoadedSquares" not in events
     assert "refreshOwnedVehicles" not in events
@@ -233,7 +235,9 @@ def test_lua_runtime_never_scans_or_exports_in_background():
     assert 'Runtime.markDirty("inventory_transfer")' not in events
     assert "Events.OnGameStart.Add(onGameStart)" in events
     assert "PZMB.Scanner.scanBaseLoadedSquares()" in ui
-    assert 'PZMB.Export.write("manual")' in ui
+    assert 'PZMB.Export.write("inventory")' in ui
+    assert 'tr("UI_PZMB_MakeInventory")' in ui
+    assert 'tr("UI_PZMB_CalculateSupplies")' in ui
     assert "Events.OnRefreshInventoryWindowContainers" not in events
     assert 'if parent then customName = safeCall(container, "getCustomName", nil) end' in scanner
     assert 'tr("UI_PZMB_RememberContainer")' not in ui

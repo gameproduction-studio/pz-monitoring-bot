@@ -655,6 +655,7 @@ def _same_public_export(
         _same_public_snapshot(previous_public, status)
         and previous_status.get("contractRevision") == status.get("contractRevision")
         and previous_status.get("monitoringScope") == status.get("monitoringScope")
+        and previous_status.get("calculations") == status.get("calculations")
     )
 
 def write_live_files(

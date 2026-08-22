@@ -10,6 +10,9 @@ Export.lastError = nil
 Export.lastReason = nil
 Export.currentStateFile = "pzmb_current_state.json"
 Export.statusFile = "pzmb_status.json"
+Export.calculationRequestFile = "pzmb_calculation_request.json"
+Export.calculationResponseFile = "pzmb_calculation_response.txt"
+Export.lastInventorySequence = Export.lastInventorySequence or 0
 -- The game sandbox rejects the .jsonl extension in Build 42.20.3.
 -- The relay publishes this JSON-lines stream as live/changes.jsonl.
 Export.eventsFile = "pzmb_changes.txt"
@@ -76,6 +79,9 @@ function Export.write(reason)
         PZMB.Json.writeFile(Export.statusFile, Export.status(true, reason, state, nil))
         Export.lastError = nil
         Export.lastReason = reason
+        if reason == "inventory" then
+            Export.lastInventorySequence = Export.sequence
+        end
         return state
     end)
     if not ok then
@@ -85,6 +91,34 @@ function Export.write(reason)
         return false, Export.lastError
     end
     return true, result
+end
+
+function Export.requestCalculations()
+    if (Export.lastInventorySequence or 0) <= 0 then
+        return false, "inventory_required"
+    end
+    local requestId = tostring(Export.lastInventorySequence) .. ":" .. tostring(nowMillis())
+    local request = {
+        schema = "pz-monitoring-bot/calculation-request/v1",
+        requestId = requestId,
+        snapshotSequence = Export.lastInventorySequence,
+        requestedAtEpochMs = nowMillis(),
+        kind = "supply_calculations",
+    }
+    local ok, err = pcall(PZMB.Json.writeFile, Export.calculationRequestFile, request)
+    if not ok then return false, tostring(err) end
+    return true, requestId
+end
+
+function Export.readCalculationResponse()
+    local reader = getFileReader(Export.calculationResponseFile, true)
+    if not reader then return nil end
+    local line = reader:readLine()
+    reader:close()
+    if not line then return nil end
+    local requestId, status, message = string.match(line, "^([^\t]+)\t([^\t]+)\t(.*)$")
+    if not requestId then return nil end
+    return { requestId = requestId, ok = status == "ok", message = message }
 end
 
 function Export.appendEvent(event)

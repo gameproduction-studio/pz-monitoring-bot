@@ -236,6 +236,10 @@ def _telemetry_signature(settings: Settings) -> tuple[tuple[str, int, int], ...]
             return ()
         stat = path.stat()
         result.append((name, stat.st_size, stat.st_mtime_ns))
+    request = settings.telemetry_dir / "pzmb_calculation_request.json"
+    if request.is_file():
+        stat = request.stat()
+        result.append((request.name, stat.st_size, stat.st_mtime_ns))
     return tuple(result)
 
 

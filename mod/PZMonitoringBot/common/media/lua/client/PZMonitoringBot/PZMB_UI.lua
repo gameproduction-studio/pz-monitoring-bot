@@ -258,19 +258,43 @@ function UI.rememberOpenContainer()
     end
 end
 
-function UI.exportNow()
+function UI.makeInventory()
     if PZMB.Scanner.isPlayerNearAnyBase(15) then
         local scanned = PZMB.Scanner.scanBaseLoadedSquares()
         if scanned == 0 then PZMB.Scanner.refreshKnownBaseContainers() end
     end
     PZMB.Scanner.refreshOwnedVehicles()
     PZMB.Vehicles.save()
-    local ok, err = PZMB.Export.write("manual")
+    local ok, err = PZMB.Export.write("inventory")
     if ok then
-        say(tr("UI_PZMB_MsgRecordsUpdated"))
+        say(tr("UI_PZMB_MsgInventoryComplete"))
     else
-        say(tr("UI_PZMB_MsgRecordsFailed", tostring(err)))
+        say(tr("UI_PZMB_MsgInventoryFailed", tostring(err)))
     end
+end
+
+function UI.onCalculationsFinished(ok, message)
+    if ok then
+        say(tr("UI_PZMB_MsgCalculationsComplete"))
+    elseif message == "timeout" then
+        say(tr("UI_PZMB_MsgCalculationsTimeout"))
+    else
+        say(tr("UI_PZMB_MsgCalculationsFailed", tostring(message or "unknown")))
+    end
+end
+
+function UI.calculateSupplies()
+    local ok, result = PZMB.Export.requestCalculations()
+    if not ok then
+        if result == "inventory_required" then
+            say(tr("UI_PZMB_MsgInventoryRequired"))
+        else
+            say(tr("UI_PZMB_MsgCalculationsFailed", tostring(result)))
+        end
+        return
+    end
+    PZMB.Runtime.waitForAnalysis(result, UI.onCalculationsFinished)
+    say(tr("UI_PZMB_MsgCalculationsStarted"))
 end
 
 local function addBaseActions(parentMenu, zone)
@@ -351,7 +375,8 @@ function UI.onWorldContextMenu(playerNum, context, worldObjects)
     else
         for _, record in ipairs(vehicleRecords) do addVehicleActions(vehiclesMenu, record) end
     end
-    menu:addOption(tr("UI_PZMB_UpdateAll"), worldObjects, UI.exportNow)
+    menu:addOption(tr("UI_PZMB_MakeInventory"), worldObjects, UI.makeInventory)
+    menu:addOption(tr("UI_PZMB_CalculateSupplies"), worldObjects, UI.calculateSupplies)
 end
 
 Events.OnFillWorldObjectContextMenu.Add(UI.onWorldContextMenu)

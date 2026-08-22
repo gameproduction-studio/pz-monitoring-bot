@@ -50,17 +50,19 @@ save, right-click in the world, and open `Органайзер выжившег�
   `Закрепить автомобиль за собой`;
 - `Текущее авто` and `Мои автомобили` rename, refresh, or safely forget a
   registered vehicle without modifying the vehicle itself;
-- `Обновить все записи о ресурсах` writes a fresh snapshot.
+- `Сделать опись` вручную сканирует персонажа, базы и закреплённые автомобили;
+- `Сделать расчёты` передаёт уже готовую опись внешней программе: она считает остатки, калории, дубликаты и доступные рецепты по установленному Build 42.20.3.
 
 Multiple zones such as a bunker, farm, and main home may coexist. Registered
 vehicles are scoped to the active save and tracked by vehicleId with keyId as
 supporting identity.
 
 For stable gameplay, the mod never scans, serializes, or writes telemetry in the
-background and does not hook inventory transfers or per-frame events. Use
-`Обновить все записи о ресурсах` when you want to publish a new complete
-snapshot. The external relay notices that snapshot and pushes it automatically.
-A short pause is possible only while the requested snapshot is being built.
+background and does not hook inventory transfers. Use `Сделать опись` in a safe
+place when you want a fresh complete snapshot. Then use `Сделать расчёты`; the
+external relay performs the heavy work outside the game and pushes the result
+automatically. A temporary lightweight acknowledgement check exists only while
+that explicit calculation request is pending and removes itself on completion or timeout.
 
 Start the foreground relay:
 
@@ -81,11 +83,11 @@ Install the background relay once:
 It starts immediately and again at Windows sign-in. From then on the normal
 workflow is only:
 
-1. play normally; transfers and container changes export automatically after a short debounce;
-2. the mod writes local telemetry;
-3. the background relay waits for both JSON files to stabilize;
-4. it updates local diagnostics plus a bounded `live/chatgpt/` public surface;
-5. it pushes the small bootstrap, manifest, and thematic JSON pages;
+1. play normally without background world scans;
+2. choose `Сделать опись` when you want to refresh monitored resources;
+3. choose `Сделать расчёты` and wait for `Расчёты припасов завершены`;
+4. the relay calculates outside the game from the stable snapshot and installed Build 42.20.3 data;
+5. it pushes the bootstrap, manifest, thematic pages and calculation pages automatically;
 6. ChatGPT rereads the manifest and only the sections needed for the next answer.
 
 The relay polls two file timestamps every five seconds; it never scans game
@@ -99,7 +101,7 @@ containers and therefore does not affect in-game FPS. Stop it with
 .\scripts\test.ps1
 ```
 
-Current result: 39 passing tests, including scoped sequential snapshots,
+Current result: 42 passing tests, including scoped sequential snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
 alerts, bounded journal preservation, and base-only item search.
 
@@ -111,7 +113,7 @@ the GitHub URL for:
 - `live/chatgpt_state.json` (small v4 bootstrap);
 - `live/chatgpt/manifest.json` (authoritative index for one snapshot);
 - connector-safe thematic pages for character, bases, vehicles, food, changes,
-  and resources (each at most 32 KB).
+  resources, and precomputed supply/recipe calculations (each at most 32 KB).
 
 `live/current_state.json`, `status.json`, and `changes.jsonl` remain local diagnostic
 files. Ordinary ChatGPT reads the bootstrap, then the manifest, then only the
