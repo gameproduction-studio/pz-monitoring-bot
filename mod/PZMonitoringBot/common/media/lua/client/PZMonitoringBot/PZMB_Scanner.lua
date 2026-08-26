@@ -819,6 +819,15 @@ function Scanner.currentState()
         end
     end
 
+    local language = "EN"
+    if Translator and Translator.getLanguage then
+        local ok, current = pcall(Translator.getLanguage)
+        if ok and current and current.name then
+            local named, value = pcall(current.name, current)
+            if named and value then language = tostring(value) end
+        end
+    end
+
     return {
         schema = "pz-monitoring-bot/mod-snapshot/v1",
         schemaVersion = "0.4.0",
@@ -826,6 +835,7 @@ function Scanner.currentState()
         game = {
             build = toStringOrNil(safeCall(getCore(), "getVersionNumber", nil)),
             worldAgeHours = getGameTime():getWorldAgeHours(),
+            language = language,
         },
         save = {
             id = tostring(gameMode) .. ":" .. tostring(worldName),

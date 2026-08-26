@@ -199,6 +199,8 @@ def test_cli_exposes_mod_relay_without_starting_a_watcher():
     parser = _parser()
     assert parser.parse_args(["relay"]).command == "relay"
     assert parser.parse_args(["relay-monitor"]).command == "relay-monitor"
+    assert parser.parse_args(["dashboard"]).command == "dashboard"
+    assert parser.parse_args(["relay-dashboard"]).command == "relay-dashboard"
 
 
 def test_lua_scanner_was_not_truncated():
@@ -276,6 +278,9 @@ def test_lua_supports_named_multiple_base_zones_and_safe_removal():
     assert "Config.records[key][#Config.records[key] + 1] = zone" in config
     assert "function Config.renameBase(id, newName)" in config
     assert "function Config.removeBase(id)" in config
+    assert "Config.allowedRadii = { 10, 20, 30, 40 }" in config
+    assert "Config.defaultRadius = 20" in config
+    assert "function Config.updateRadius(id, radius)" in config
     assert "function Config.findContainingBase(x, y, z)" in config
     assert "Scanner.baseZones = Scanner.baseZones or {}" in scanner
     assert "function Scanner.setBaseZones(zones)" in scanner
@@ -283,9 +288,11 @@ def test_lua_supports_named_multiple_base_zones_and_safe_removal():
     assert 'tr("UI_PZMB_Organizer")' in ui
     assert 'tr("UI_PZMB_MyBases"' in ui
     assert 'tr("UI_PZMB_DeleteBase")' in ui
+    assert 'tr("UI_PZMB_ChangeRadius")' in ui
     assert "ISModalDialog:new" in ui
     assert ui.isascii()
     assert config.isascii()
+    assert "language = language" in scanner
 
     ru_txt = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/RU/UI_RU.txt"
     en_txt = root / "mod/PZMonitoringBot/common/media/lua/shared/Translate/EN/UI_EN.txt"

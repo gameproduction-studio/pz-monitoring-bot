@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
 
 Push-Location $AppRoot
 try {
-    & $PzBot --config config.json relay-monitor
+    & $PzBot --config config.json relay-dashboard
     if ($LASTEXITCODE -ne 0) { throw "Relay exited with code $LASTEXITCODE." }
 }
 finally {

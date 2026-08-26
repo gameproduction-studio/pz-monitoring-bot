@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PZ Organizer — Survivor Ledger</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/i18n.js" defer></script>
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="Navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">PZ</span>
+        <span><strong>ORGANIZER</strong><small>survivor ledger</small></span>
+      </div>
+      <nav id="nav" class="nav">
+        <button class="nav-item active" data-view="overview"><span>01</span><b data-i18n="overview">Обзор</b></button>
+        <button class="nav-item" data-view="bases"><span>02</span><b data-i18n="bases">Базы</b></button>
+        <button class="nav-item" data-view="vehicles"><span>03</span><b data-i18n="vehicles">Автомобили</b></button>
+        <button class="nav-item" data-view="food"><span>04</span><b data-i18n="food">Еда и жидкости</b></button>
+        <button class="nav-item" data-view="resources"><span>05</span><b data-i18n="resources">Ресурсы</b></button>
+        <button class="nav-item" data-view="history"><span>06</span><b data-i18n="history">История</b></button>
+      </nav>
+      <div class="rail-footer">
+        <label for="language" data-i18n="language">Язык панели</label>
+        <select id="language"></select>
+        <div id="connection" class="connection pending"><i></i><span data-i18n="connecting">Подключение…</span></div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" data-i18n="liveLedger">ЖИВАЯ ОПИСЬ // ТОЛЬКО ЧТЕНИЕ</p>
+          <h1 id="view-title">Сводка убежища</h1>
+        </div>
+        <div class="snapshot-stamp">
+          <span data-i18n="lastInventory">ПОСЛЕДНЯЯ ОПИСЬ</span>
+          <strong id="scan-time">—</strong>
+          <small id="save-name">—</small>
+        </div>
+      </header>
+
+      <div id="notice" class="notice hidden" role="status"></div>
+      <section id="view" class="view" aria-live="polite">
+        <div class="loading-card">
+          <span class="loader"></span>
+          <p data-i18n="loading">Читаю журнал выжившего…</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="empty-template">
+    <div class="empty-state">
+      <span>∅</span>
+      <h2 data-i18n="noData">Данных пока нет</h2>
+      <p data-i18n="takeInventoryHint">В игре выберите «Сделать опись», затем данные появятся здесь автоматически.</p>
+    </div>
+  </template>
+</body>
+</html>

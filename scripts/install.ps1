@@ -15,3 +15,4 @@ if (-not (Test-Path $Config)) {
 }
 Write-Host "Installed: $ModTarget"
 Write-Host "Enable the mod, load a save, then run scripts\run-relay.ps1"
+Write-Host "Survivor Organizer dashboard: http://127.0.0.1:8765/"

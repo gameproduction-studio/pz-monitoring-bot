@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,14 @@ class PublishSettings:
 
 
 @dataclass(frozen=True)
+class DashboardSettings:
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8765
+    language: str = "auto"
+
+
+@dataclass(frozen=True)
 class Settings:
     config_path: Path
     save_root: Path
@@ -39,6 +47,7 @@ class Settings:
     explicitly_opened_container_ids: frozenset[str]
     manual_owned_container_ids: frozenset[str]
     publish: PublishSettings
+    dashboard: DashboardSettings = field(default_factory=DashboardSettings)
 
     @property
     def state_path(self) -> Path:
@@ -54,6 +63,7 @@ def load_settings(path: str | Path) -> Settings:
     raw = json.loads(config_path.read_text(encoding="utf-8-sig"))
     base = config_path.parent
     publication = raw.get("publish") or {}
+    dashboard = raw.get("dashboard") or {}
     override = raw.get("save_override")
     return Settings(
         config_path=config_path,
@@ -84,6 +94,12 @@ def load_settings(path: str | Path) -> Settings:
             minimum_interval_seconds=float(
                 publication.get("minimum_interval_seconds", 20)
             ),
+        ),
+        dashboard=DashboardSettings(
+            enabled=bool(dashboard.get("enabled", True)),
+            host=str(dashboard.get("host", "127.0.0.1")),
+            port=int(dashboard.get("port", 8765)),
+            language=str(dashboard.get("language", "auto")),
         ),
     )
 

@@ -10,6 +10,12 @@
   "base_zones": [],
   "explicitly_opened_container_ids": [],
   "manual_owned_container_ids": [],
+  "dashboard": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8765,
+    "language": "auto"
+  },
   "publish": {
     "enabled": true,
     "repository_path": "..",

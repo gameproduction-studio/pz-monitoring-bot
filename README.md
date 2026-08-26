@@ -4,6 +4,8 @@ Hybrid resource monitor for Project Zomboid 42.20.3 Stable:
 
 ```text
 in-game mod -> Zomboid/Lua JSON -> local relay -> live JSON -> ordinary ChatGPT
+                                      |
+                                      +-> local browser dashboard
 ```
 
 No OpenAI API is required. The mod reads live game objects, the relay keeps
@@ -25,6 +27,9 @@ before each gameplay answer.
 - nearest-known-item search with bag capacity, distance, and direction;
 - durable local comparison state;
 - direct Git push of only the approved `chatgpt_state.json` file.
+- private browser dashboard on `http://127.0.0.1:8765/` with overview,
+  bases, vehicles, food, resources, history, search, and responsive fullscreen layout;
+- dashboard language auto-detection from the game plus a local manual override.
 
 ## Honest search boundary
 
@@ -42,10 +47,10 @@ search can be added later without expanding the permanent public snapshot.
 Then enable `pz monitoring bot` in Project Zomboid, load any single-player
 save, right-click in the world, and open `Органайзер выжившего`:
 
-- `Установить базу здесь (радиус 30 клеток)` creates a named monitoring zone;
+- `Установить базу здесь` offers a radius of 10, 20, 30, or 40 tiles;
 - `Мои базы` lists every zone for the current save with coordinates and radius;
-- each base submenu can rename it, scan its resources on demand, or safely delete
-  only the organizer entry;
+- each base submenu can rename it, change its radius without creating a copy,
+  scan resources on demand, or safely delete only the organizer entry;
 - right-click a vehicle while carrying its key, then choose
   `Закрепить автомобиль за собой`;
 - `Текущее авто` and `Мои автомобили` rename, refresh, or safely forget a
@@ -70,7 +75,18 @@ Start the foreground relay:
 .\scripts\run-relay.ps1
 ```
 
-Stop it with `Ctrl+C`. It is not installed as a service or left running.
+The same process also serves the private dashboard:
+
+```text
+http://127.0.0.1:8765/
+```
+
+Open that address in a browser and use `F11` for a clean fullscreen panel.
+The browser polls only a tiny local health record and reloads the large tables
+when the inventory sequence or scan time changes. It never scans the game.
+
+Stop the foreground process with `Ctrl+C`. It is not installed as a service
+or left running.
 
 ## Automatic one-button mode
 
@@ -95,13 +111,30 @@ containers and therefore does not affect in-game FPS. Stop it with
 `.\scripts\stop-relay.ps1`. Remove Windows autostart with
 `.\scripts\uninstall-autostart.ps1`.
 
+Dashboard defaults live in `app/config.json`:
+
+```json
+{
+  "dashboard": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8765,
+    "language": "auto"
+  }
+}
+```
+
+Keep the host on a loopback address. The server rejects non-loopback binds.
+Use the selector in the panel for a temporary language override; `auto`
+follows the language exported by Project Zomboid.
+
 ## Test
 
 ```powershell
 .\scripts\test.ps1
 ```
 
-Current result: 42 passing tests, including scoped sequential snapshots,
+Current result: 46 passing tests, including the loopback dashboard, scoped sequential snapshots,
 registered-vehicle cargo, stale carry-forward, removal, fuel/condition events,
 alerts, bounded journal preservation, and base-only item search.
 

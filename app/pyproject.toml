@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pz-monitoring-bot"
-version = "0.2.0"
-description = "Read-only Project Zomboid resource monitor with live JSON publishing for ChatGPT"
+version = "0.3.0"
+description = "Project Zomboid Survivor Organizer with a local browser dashboard and ChatGPT telemetry"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "GameProduction Studio" }]
@@ -24,8 +24,10 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+pzbot = ["web/*.html", "web/*.css", "web/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["src"]
-

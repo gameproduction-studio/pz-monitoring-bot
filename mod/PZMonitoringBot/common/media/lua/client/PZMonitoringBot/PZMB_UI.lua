@@ -168,8 +168,8 @@ local function currentBase()
     )
 end
 
-function UI.setBaseHere()
-    local ok, zone, created = PZMB.Config.setBaseHere(PZMB.Config.defaultRadius)
+function UI.setBaseHere(radius)
+    local ok, zone, created = PZMB.Config.setBaseHere(radius)
     if not ok then
         say(tr("UI_PZMB_MsgSetBaseNoPlayer"))
         return
@@ -178,6 +178,30 @@ function UI.setBaseHere()
         say(tr("UI_PZMB_MsgBaseSaved", tostring(zone.name), tostring(zone.radius)))
     else
         say(tr("UI_PZMB_MsgAlreadyInside", tostring(zone.name)))
+    end
+end
+
+function UI.changeBaseRadius(zone, radius)
+    if not zone then return end
+    local ok, normalized = PZMB.Config.updateRadius(zone.id, radius)
+    if not ok then
+        say(tr("UI_PZMB_MsgRadiusFailed"))
+        return
+    end
+    PZMB.Scanner.baseIndexesBuilt[zone.id] = nil
+    say(tr("UI_PZMB_MsgRadiusChanged", tostring(zone.name), tostring(normalized)))
+end
+
+local function addRadiusMenu(parentMenu, parentOption, target, callback)
+    local radiusMenu = ISContextMenu:getNew(parentMenu)
+    parentMenu:addSubMenu(parentOption, radiusMenu)
+    for _, radius in ipairs(PZMB.Config.allowedRadii) do
+        radiusMenu:addOption(
+            tr("UI_PZMB_RadiusOption", tostring(radius)),
+            target or radius,
+            callback,
+            target and radius or nil
+        )
     end
 end
 
@@ -302,6 +326,8 @@ local function addBaseActions(parentMenu, zone)
     local actions = ISContextMenu:getNew(parentMenu)
     parentMenu:addSubMenu(option, actions)
     actions:addOption(tr("UI_PZMB_Rename"), zone, UI.openRenameDialog)
+    local radius = actions:addOption(tr("UI_PZMB_ChangeRadius"), zone, nil)
+    addRadiusMenu(actions, radius, zone, UI.changeBaseRadius)
     actions:addOption(tr("UI_PZMB_UpdateBase"), zone, UI.scanBase)
     actions:addOption(tr("UI_PZMB_DeleteBase"), zone, UI.confirmDeleteBase)
 end
@@ -321,13 +347,13 @@ function UI.onWorldContextMenu(playerNum, context, worldObjects)
         local currentMenu = ISContextMenu:getNew(menu)
         menu:addSubMenu(current, currentMenu)
         currentMenu:addOption(tr("UI_PZMB_Rename"), here, UI.openRenameDialog)
+        local radius = currentMenu:addOption(tr("UI_PZMB_ChangeRadius"), here, nil)
+        addRadiusMenu(currentMenu, radius, here, UI.changeBaseRadius)
         currentMenu:addOption(tr("UI_PZMB_UpdateBase"), here, UI.scanBase)
         currentMenu:addOption(tr("UI_PZMB_DeleteBase"), here, UI.confirmDeleteBase)
     else
-        menu:addOption(
-            tr("UI_PZMB_SetBaseHere", tostring(PZMB.Config.defaultRadius)),
-            worldObjects, UI.setBaseHere
-        )
+        local setBase = menu:addOption(tr("UI_PZMB_SetBaseHere"), worldObjects, nil)
+        addRadiusMenu(menu, setBase, nil, UI.setBaseHere)
     end
 
 

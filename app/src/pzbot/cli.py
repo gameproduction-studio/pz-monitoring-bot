@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 from .active_save import ActiveSave, activity_signature, resolve_active_save
 from .character_scan import scan_character
+from .dashboard import start_dashboard
 from .git_sync import GitSync
 from .instance_lock import InstanceAlreadyRunning, single_instance
 from .jsonio import atomic_write_json
@@ -276,6 +277,19 @@ def monitor_mod(settings: Settings) -> int:
         return 0
 
 
+def monitor_mod_with_dashboard(settings: Settings) -> int:
+    """Keep the relay and local dashboard in one autostart process."""
+    handle = None
+    if settings.dashboard.enabled:
+        handle = start_dashboard(settings, background=True)
+        LOG.info("open the Survivor Organizer at %s", handle.url)
+    try:
+        return monitor_mod(settings)
+    finally:
+        if handle:
+            handle.stop()
+
+
 def _monitor_mod_locked(settings: Settings) -> int:
     """Watch only mod telemetry; never open a Project Zomboid save."""
     LOG.info("mod telemetry relay started; stop with Ctrl+C")
@@ -353,6 +367,14 @@ def _parser() -> argparse.ArgumentParser:
         "relay-monitor",
         help="Watch mod telemetry in foreground; stop with Ctrl+C",
     )
+    commands.add_parser(
+        "dashboard",
+        help="Serve the local Survivor Organizer dashboard",
+    )
+    commands.add_parser(
+        "relay-dashboard",
+        help="Run the mod relay and local dashboard together",
+    )
 
     base = commands.add_parser("base", help="Manage owned base zones")
     base_commands = base.add_subparsers(dest="base_command", required=True)
@@ -381,6 +403,14 @@ def main() -> int:
             return 0
         if args.command == "relay-monitor":
             return monitor_mod(settings)
+        if args.command == "dashboard":
+            try:
+                start_dashboard(settings, background=False)
+            except KeyboardInterrupt:
+                LOG.info("dashboard stopped by user")
+            return 0
+        if args.command == "relay-dashboard":
+            return monitor_mod_with_dashboard(settings)
         if args.command == "status":
             status_path = settings.live_dir / "status.json"
             if not status_path.is_file():

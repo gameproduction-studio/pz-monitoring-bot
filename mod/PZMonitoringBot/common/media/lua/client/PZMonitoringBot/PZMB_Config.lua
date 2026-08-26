@@ -4,7 +4,8 @@ PZMB.Config = PZMB.Config or {}
 local Config = PZMB.Config
 -- Build 42.20.3 rejects some non-whitelisted extensions in getFileWriter().
 Config.fileName = "pzmb_bases.txt"
-Config.defaultRadius = 30
+Config.defaultRadius = 20
+Config.allowedRadii = { 10, 20, 30, 40 }
 Config.records = Config.records or {}
 
 local function escape(value)
@@ -40,6 +41,14 @@ local function defaultBaseName(number)
     return getText("UI_PZMB_Base")
 end
 
+function Config.normalizeRadius(value)
+    value = math.floor(tonumber(value) or Config.defaultRadius)
+    for _, radius in ipairs(Config.allowedRadii) do
+        if value == radius then return radius end
+    end
+    return Config.defaultRadius
+end
+
 local function normalizeZone(id, name, x, y, z, radius, minZ, maxZ)
     x, y, z = tonumber(x), tonumber(y), tonumber(z)
     if not x or not y or not z then return nil end
@@ -50,7 +59,7 @@ local function normalizeZone(id, name, x, y, z, radius, minZ, maxZ)
         x = x,
         y = y,
         z = z,
-        radius = tonumber(radius) or Config.defaultRadius,
+        radius = Config.normalizeRadius(radius),
         minZ = tonumber(minZ) or z - 2,
         maxZ = tonumber(maxZ) or z + 5,
     }
@@ -147,7 +156,7 @@ function Config.setBaseHere(radius)
         zoneId(x, y, z),
         defaultBaseName(#zones + 1),
         x, y, z,
-        math.max(1, math.floor(tonumber(radius) or Config.defaultRadius)),
+        Config.normalizeRadius(radius),
         z - 2, z + 5
     )
     zones[#zones + 1] = zone
@@ -155,6 +164,19 @@ function Config.setBaseHere(radius)
     Config.save()
     Config.applyCurrentSave()
     return true, zone, true
+end
+
+function Config.updateRadius(id, radius)
+    radius = Config.normalizeRadius(radius)
+    for _, zone in ipairs(Config.currentZones()) do
+        if zone.id == id then
+            zone.radius = radius
+            Config.save()
+            Config.applyCurrentSave()
+            return true, radius
+        end
+    end
+    return false, radius
 end
 
 function Config.renameBase(id, newName)
